@@ -6,7 +6,7 @@ import { AppError } from '../common/http-exception.filter'
 import { MailService } from '../mail/mail.service'
 import type { User } from '../users/user.entity'
 import { UsersService } from '../users/users.service'
-import { AuthTokensService } from './auth-tokens.service'
+import { AuthTokensService, tokenError } from './auth-tokens.service'
 import { hashPassword, verifyPassword } from './passwords'
 import { SessionService, type Issued, type SessionMeta } from './session.service'
 
@@ -53,6 +53,26 @@ export class AuthService {
       : await verifyPassword(await (dummyHash ??= hashPassword('not-a-real-password')), input.password).then(() => false)
     if (!user || !ok) throw badCredentials()
     return this.sessions.start(user, meta)
+  }
+
+  /** Mails a reset link if the account exists; the caller always answers 202. */
+  async forgotPassword(email: string): Promise<void> {
+    const user = await this.users.findByEmail(email)
+    if (!user) return
+    await this.tokens.invalidatePending('reset_password', user.email)
+    const raw = await this.tokens.issue('reset_password', user.email, user.id)
+    await this.mail.sendPasswordReset(user.email, this.link('reset', raw))
+  }
+
+  /** Sets the new password, ends every other session, and signs in. Receiving the mail proves the address. */
+  async resetPassword(token: string, password: string, meta: SessionMeta): Promise<Issued> {
+    const row = await this.tokens.consume('reset_password', token)
+    const user = row.userId ? await this.users.findById(row.userId) : null
+    if (!user) throw tokenError('token_invalid')
+    await this.users.setPassword(user.id, await hashPassword(password))
+    await this.users.markVerified(user.id)
+    await this.sessions.revokeAllForUser(user.id)
+    return this.sessions.start((await this.users.findById(user.id))!, meta)
   }
 
   async resendVerification(email: string): Promise<void> {

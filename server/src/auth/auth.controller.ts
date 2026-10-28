@@ -6,7 +6,7 @@ import { parseBody } from '../common/validate'
 import { toPublicUser } from '../users/public-user'
 import { AuthService } from './auth.service'
 import { clearRefreshCookie, REFRESH_COOKIE, setRefreshCookie } from './cookies'
-import { emailDto, loginDto, signupDto, tokenDto } from './dto/auth.dto'
+import { emailDto, loginDto, resetDto, signupDto, tokenDto } from './dto/auth.dto'
 import { SessionService, type Issued } from './session.service'
 
 export const metaOf = (req: Request) => ({ ip: req.ip ?? '', userAgent: String(req.headers['user-agent'] ?? '') })
@@ -58,6 +58,19 @@ export class AuthController {
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     await this.sessions.revoke(req.cookies?.[REFRESH_COOKIE])
     clearRefreshCookie(res, this.secure)
+  }
+
+  @Post('password/forgot')
+  @HttpCode(202)
+  async forgot(@Body() body: unknown) {
+    await this.auth.forgotPassword(parseBody(emailDto, body).email)
+  }
+
+  @Post('password/reset')
+  @HttpCode(200)
+  async reset(@Body() body: unknown, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const { token, password } = parseBody(resetDto, body)
+    return this.respond(res, await this.auth.resetPassword(token, password, { ...metaOf(req), persistent: true }))
   }
 
   @Post('verify-email')

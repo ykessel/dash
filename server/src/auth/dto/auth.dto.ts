@@ -27,3 +27,4 @@ export const loginDto = z.object({
 
 export const emailDto = z.object({ email: emailField })
 export const tokenDto = z.object({ token: tokenField })
+export const resetDto = z.object({ token: tokenField, password: passwordField })
