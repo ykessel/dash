@@ -1,12 +1,17 @@
 /* ===================== Auth (mock sign in / sign up / signed out) ===================== */
 .auth {
-  min-height: 100dvh;
+  /* One screen, no page scroll: the panel and card fit the viewport. */
+  box-sizing: border-box;
+  height: 100dvh;
+  overflow: hidden;
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(420px, 520px);
   gap: var(--gutter);
   padding: var(--edge) var(--gutter) var(--edge) var(--edge);
 }
-.auth__main { display: grid; place-items: center; padding: 24px 0; outline: none; }
+.auth__main { min-height: 0; display: flex; flex-direction: column; align-items: center; padding: 12px 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; outline: none; }
+.auth__main::-webkit-scrollbar { display: none; }
+.auth__main > .auth-card { margin-block: auto; flex: none; }
 
 .auth-card {
   width: min(460px, 100%);
@@ -100,8 +105,8 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: clamp(28px, 4vw, 56px);
-  min-height: calc(100dvh - 2 * var(--edge));
+  padding: clamp(24px, 4vh, 48px) clamp(28px, 4vw, 56px);
+  min-height: 0;
   background:
     radial-gradient(60% 50% at 20% 15%, color-mix(in srgb, var(--accent) 30%, transparent), transparent 70%),
     radial-gradient(50% 45% at 85% 85%, color-mix(in srgb, var(--purple) 26%, transparent), transparent 70%),
@@ -110,11 +115,12 @@
   animation: side-in 0.9s var(--ease) backwards;
 }
 /* Product tour */
-.auth-show { justify-content: flex-start; gap: 22px; background:
+.auth-show { justify-content: center; gap: clamp(14px, 2.6vh, 26px); background:
     radial-gradient(70% 55% at 85% 30%, color-mix(in srgb, var(--accent) 30%, transparent), transparent 70%),
     radial-gradient(45% 40% at 10% 95%, color-mix(in srgb, var(--pink) 20%, transparent), transparent 70%),
     var(--glass-chrome); }
-.tour__hero { position: relative; flex: 1; min-height: 400px; }
+.auth-show > * { width: 100%; max-width: 920px; margin-inline: auto; }
+.tour__hero { position: relative; flex: none; height: clamp(280px, 44vh, 440px); }
 .tour__copy { position: relative; z-index: 2; width: min(400px, 47%); display: grid; gap: 14px; animation: rise 0.8s 0.1s var(--ease) backwards; }
 .tour__eyebrow { font-size: 12.5px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-ink); }
 .tour__copy h2 { font-family: var(--font-display); font-size: clamp(32px, 1.6vw + 16px, 46px); font-weight: 700; line-height: 1.05; letter-spacing: -0.04em; }
@@ -124,8 +130,8 @@
   position: absolute;
   top: 8px;
   right: clamp(-90px, -4vw, -20px);
-  width: min(480px, 58%);
-  height: 380px;
+  width: min(500px, 58%);
+  height: calc(100% - 34px);
   border-radius: 24px;
   overflow: hidden;
   transform: perspective(1400px) rotateY(-14deg) rotateX(4deg);
@@ -235,11 +241,39 @@
 .tour__arrows .ibtn { background: var(--fill); }
 .tour__arrows .ibtn:hover { background: var(--fill-2); }
 
+/* Shorter screens: trim the feature cards so everything still fits. */
+@media (max-height: 820px) {
+  .tour__feature { align-items: center; padding: 12px 14px; }
+  .tour__feature p { display: none; }
+}
+@media (max-height: 660px) {
+  .tour__features { display: none; }
+}
+@media (max-height: 860px) {
+  .auth-card { gap: 14px; padding: 22px 26px 20px; }
+  .auth-head h1 { font-size: 28px; }
+  .auth-head p { font-size: 15px; }
+  .auth-demo { padding: 10px 10px 8px; }
+}
+
+@media (max-height: 760px) {
+  .auth-card { gap: 10px; padding: 18px 24px 16px; }
+  .auth-brand { font-size: 18px; }
+  .auth-brand .brand__mark { width: 32px; height: 32px; border-radius: 10px; }
+  .auth-head h1 { font-size: 24px; }
+  .auth-head p { display: none; }
+  .auth-form { gap: 10px; }
+  .auth-form .input { height: 40px; min-height: 40px; }
+  .auth-social .btn { --h: 40px; }
+  .auth-submit { --h: 44px; }
+  .auth-demo__user { padding: 4px 8px; }
+  .auth-field__hint { display: none; }
+}
+
 @media (max-width: 1250px) {
   .tour__copy { width: 100%; }
-  .tour__window { position: relative; top: 0; right: auto; width: 100%; margin-top: 24px; transform: none; }
-  .tour__hero { min-height: 0; }
-  .tour__window { height: 320px; }
+  .tour__hero { height: auto; }
+  .tour__window { position: relative; top: 0; right: auto; width: 100%; margin-top: 20px; transform: none; height: clamp(200px, 34vh, 320px); }
   .tour__toast { left: auto; right: 16px; bottom: 16px; }
   .tour__feature { align-items: center; padding: 12px 14px; }
   .tour__feature p { display: none; }
