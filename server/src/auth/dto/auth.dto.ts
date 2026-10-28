@@ -19,5 +19,11 @@ export const signupDto = z.object({
   password: passwordField,
 })
 
+export const loginDto = z.object({
+  email: emailField,
+  password: z.string({ error: 'Enter your password.' }).min(1, 'Enter your password.').max(200),
+  remember: z.boolean().default(true),
+})
+
 export const emailDto = z.object({ email: emailField })
 export const tokenDto = z.object({ token: tokenField })

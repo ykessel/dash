@@ -7,15 +7,21 @@ import { MailService } from '../mail/mail.service'
 import type { User } from '../users/user.entity'
 import { UsersService } from '../users/users.service'
 import { AuthTokensService } from './auth-tokens.service'
-import { hashPassword } from './passwords'
+import { hashPassword, verifyPassword } from './passwords'
+import { SessionService, type Issued, type SessionMeta } from './session.service'
 
 const emailTaken = () => new AppError(409, 'email_taken', 'That email already has an account. Sign in instead.', 'email')
+const badCredentials = () => new AppError(401, 'bad_credentials', 'Email or password is incorrect.', 'password')
+
+// Verified against when the account has no password, so a miss costs as long as a wrong password.
+let dummyHash: Promise<string> | undefined
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly users: UsersService,
     private readonly tokens: AuthTokensService,
+    private readonly sessions: SessionService,
     private readonly mail: MailService,
     private readonly config: ConfigService<Env, true>,
   ) {}
@@ -25,7 +31,7 @@ export class AuthService {
     return `${this.config.get('APP_URL', { infer: true })}/#/auth/${route}?token=${token}`
   }
 
-  async signup(input: { name: string; email: string; password: string }): Promise<User> {
+  async signup(input: { name: string; email: string; password: string }, meta: SessionMeta): Promise<Issued> {
     if (await this.users.findByEmail(input.email)) throw emailTaken()
     let user: User
     try {
@@ -36,7 +42,17 @@ export class AuthService {
       throw e
     }
     await this.sendVerification(user)
-    return user
+    return this.sessions.start(user, meta)
+  }
+
+  /** Same answer for unknown email, wrong password and password-less (OAuth-only) accounts. */
+  async login(input: { email: string; password: string }, meta: SessionMeta): Promise<Issued> {
+    const user = await this.users.findByEmail(input.email)
+    const ok = user?.passwordHash
+      ? await verifyPassword(user.passwordHash, input.password)
+      : await verifyPassword(await (dummyHash ??= hashPassword('not-a-real-password')), input.password).then(() => false)
+    if (!user || !ok) throw badCredentials()
+    return this.sessions.start(user, meta)
   }
 
   async resendVerification(email: string): Promise<void> {

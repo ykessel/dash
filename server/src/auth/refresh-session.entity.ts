@@ -11,5 +11,6 @@ export class RefreshSession {
   @Column({ name: 'revoked_at', type: 'timestamptz', nullable: true }) revokedAt: Date | null
   @Column({ name: 'user_agent', type: 'text', default: '' }) userAgent: string
   @Column({ type: 'text', default: '' }) ip: string
+  @Column({ type: 'boolean', default: true }) persistent: boolean
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) createdAt: Date
 }
