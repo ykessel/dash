@@ -10,6 +10,10 @@ import { AuthTokensService } from './auth-tokens.service'
 import { AuthController } from './auth.controller'
 import { AuthService } from './auth.service'
 import { JwtAuthGuard } from './jwt-auth.guard'
+import { GithubStrategy } from './oauth/github.strategy'
+import { GoogleStrategy } from './oauth/google.strategy'
+import { IdentityLinker } from './oauth/identity-linker.service'
+import { OAuthController } from './oauth/oauth.controller'
 import { RefreshSession } from './refresh-session.entity'
 import { SessionService } from './session.service'
 
@@ -27,8 +31,8 @@ import { SessionService } from './session.service'
     }),
   ],
   // MeController lives with users but needs the session guard, so it is mounted here to avoid a module cycle.
-  controllers: [AuthController, MeController],
-  providers: [AuthService, AuthTokensService, SessionService, JwtAuthGuard],
+  controllers: [AuthController, OAuthController, MeController],
+  providers: [AuthService, AuthTokensService, SessionService, JwtAuthGuard, IdentityLinker, GoogleStrategy, GithubStrategy],
   exports: [AuthTokensService, SessionService, JwtAuthGuard],
 })
 export class AuthModule {}
