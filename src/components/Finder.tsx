@@ -58,7 +58,7 @@ export function Finder() {
 
   const items = useMemo<Item[]>(() => {
     const s = q.trim().toLowerCase()
-    const pages: Item[] = (Object.keys(TITLES) as (keyof typeof TITLES)[]).map(k => ({
+    const pages: Item[] = (['home', 'tasks', 'calendar', 'projects', 'insights', 'team', 'settings'] as (keyof typeof TITLES)[]).map(k => ({
       id: `p-${k}`, group: 'Pages', title: TITLES[k], sub: 'Go to page', icon: PAGE_ICONS[k], run: () => go(k),
     }))
     const actions: Item[] = [

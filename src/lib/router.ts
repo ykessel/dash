@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 
-export type RouteName = 'home' | 'tasks' | 'calendar' | 'projects' | 'insights' | 'team' | 'settings'
+export type RouteName = 'home' | 'tasks' | 'calendar' | 'projects' | 'insights' | 'team' | 'settings' | 'signin' | 'signup' | 'signedout'
+export const AUTH_ROUTES: RouteName[] = ['signin', 'signup', 'signedout']
 
 export interface Route {
   name: RouteName
   param?: string
 }
 
-const NAMES: RouteName[] = ['home', 'tasks', 'calendar', 'projects', 'insights', 'team', 'settings']
+const NAMES: RouteName[] = ['home', 'tasks', 'calendar', 'projects', 'insights', 'team', 'settings', 'signin', 'signup', 'signedout']
 
 function read(): Route {
   const [name, param] = location.hash.replace(/^#\/?/, '').split('/')

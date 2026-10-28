@@ -18,6 +18,7 @@ const NAV: { route: RouteName; label: string; icon: string }[] = [
 
 export const TITLES: Record<RouteName, string> = {
   home: 'Home', tasks: 'Tasks', calendar: 'Calendar', projects: 'Projects', insights: 'Insights', team: 'Team', settings: 'Settings',
+  signin: 'Sign in', signup: 'Sign up', signedout: 'Signed out',
 }
 
 function useLens(dep: unknown, axis: 'y' | 'x') {
@@ -44,7 +45,7 @@ function useLens(dep: unknown, axis: 'y' | 'x') {
 export function AccountMenu({ anchor, onClose, placement = 'below', align = 'right', matchWidth = false }: {
   anchor: HTMLElement | null; onClose: () => void; placement?: 'below' | 'above'; align?: 'left' | 'right'; matchWidth?: boolean
 }) {
-  const { look, setLook, resetDemo, openModal } = useStore()
+  const { look, setLook, resetDemo, openModal, signOut } = useStore()
   const pick = (t: Theme) => { setLook({ theme: t }); onClose() }
   return (
     <Popover anchor={anchor} onClose={onClose} placement={placement} align={align} matchWidth={matchWidth}>
@@ -59,6 +60,8 @@ export function AccountMenu({ anchor, onClose, placement = 'below', align = 'rig
       ))}
       <div className="menu__sep" />
       <button className="menu__item menu__item--danger" onClick={() => { resetDemo(); onClose() }}>Reset demo data <Icon name="refresh" /></button>
+      <div className="menu__sep" />
+      <button className="menu__item" onClick={() => { onClose(); signOut(); go('signedout') }}>Sign out <Icon name="logout" /></button>
     </Popover>
   )
 }

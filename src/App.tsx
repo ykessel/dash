@@ -4,7 +4,8 @@ import { Island } from './components/Island'
 import { DrawerHost, ModalHost } from './components/Overlays'
 import { Sidebar, TabBar, Toolbar } from './components/Shell'
 import { Wallpaper } from './components/Wallpaper'
-import { go, useRoute, type RouteName } from './lib/router'
+import { AUTH_ROUTES, go, useRoute, type RouteName } from './lib/router'
+import { AuthPage } from './pages/Auth'
 import { Calendar } from './pages/Calendar'
 import { Home } from './pages/Home'
 import { Insights } from './pages/Insights'
@@ -19,7 +20,16 @@ const GO_KEYS: Record<string, RouteName> = { h: 'home', t: 'tasks', c: 'calendar
 
 export function App() {
   const route = useRoute()
-  const { openModal, startFocus, setLook, modal, drawer, finder } = useStore()
+  const { openModal, startFocus, setLook, modal, drawer, finder, signedIn } = useStore()
+  const isAuth = AUTH_ROUTES.includes(route.name)
+
+  // Mock auth gate: signed-out visitors land on Sign in; signed-in users skip it.
+  useEffect(() => {
+    // Read the hash itself: a redirect may already be on its way (e.g. to "signed out").
+    const target = location.hash.replace(/^#\/?/, '').split('/')[0] as RouteName
+    if (!signedIn && !AUTH_ROUTES.includes(target)) go('signin')
+    else if (signedIn && isAuth) go('home')
+  }, [signedIn, isAuth])
 
   // Scroll to top when the page changes.
   useEffect(() => {
@@ -27,7 +37,8 @@ export function App() {
   }, [route.name, route.param])
 
   useEffect(() => {
-    document.title = `${route.name[0].toUpperCase()}${route.name.slice(1)} · Pane`
+    const t: Partial<Record<RouteName, string>> = { signin: 'Sign in', signup: 'Create account', signedout: 'Signed out' }
+    document.title = `${t[route.name] ?? route.name[0].toUpperCase() + route.name.slice(1)} · Pane`
   }, [route.name])
 
   // The light that follows the pointer across glass surfaces.
@@ -60,7 +71,7 @@ export function App() {
     const on = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement
       if (/INPUT|TEXTAREA|SELECT/.test(el.tagName) || el.isContentEditable) return
-      if (e.metaKey || e.ctrlKey || e.altKey || modal || drawer || finder) return
+      if (e.metaKey || e.ctrlKey || e.altKey || modal || drawer || finder || !signedIn) return
       const k = e.key.toLowerCase()
       if (Date.now() - pendingG < 900 && GO_KEYS[k]) { go(GO_KEYS[k]); pendingG = 0; return }
       if (k === 'g') { pendingG = Date.now(); return }
@@ -71,7 +82,17 @@ export function App() {
     }
     window.addEventListener('keydown', on)
     return () => window.removeEventListener('keydown', on)
-  }, [openModal, startFocus, setLook, modal, drawer, finder])
+  }, [openModal, startFocus, setLook, modal, drawer, finder, signedIn])
+
+  if (isAuth || !signedIn) {
+    return (
+      <>
+        <Wallpaper />
+        {isAuth && <AuthPage route={route.name} />}
+        <Island />
+      </>
+    )
+  }
 
   let page
   switch (route.name) {

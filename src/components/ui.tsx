@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { Person, Priority, Project } from '../data/types'
 import { Icon } from './Icon'
@@ -25,7 +25,8 @@ export function Face({ id, skin }: { id: string; skin: number }) {
   const hair = HAIR[(h >> 3) % HAIR.length]
   const shirt = SHIRT[(h >> 6) % SHIRT.length]
   const style = (h >> 9) % 4
-  const gid = `g${h.toString(36)}`
+  // Unique per instance: a hidden copy with the same id would blank the gradient.
+  const gid = `g${useId().replace(/:/g, '')}`
   return (
     <svg className="av__face" viewBox="0 0 40 40" aria-hidden="true">
       <defs>

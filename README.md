@@ -29,6 +29,18 @@ npm run preview
 | `#/team` | Tarjetas por persona con estado, hora local y carga. Filtro por equipo, perfil e invitaciones |
 | `#/settings` | Perfil, notificaciones, apariencia (tema, 10 fondos, 6 acentos, vidrio claro/tintado, reducir transparencia), focus y datos |
 
+## Acceso (simulado)
+
+| Ruta | Contenido |
+| --- | --- |
+| `#/signin` | Inicio de sesión: Google/Apple simulados, email y contraseña con mostrar/ocultar, "Forgot?", "Keep me signed in" y cuentas demo de un clic |
+| `#/signup` | Registro: nombre, email, contraseña con medidor de fortaleza, equipo, rol y aceptación de términos |
+| `#/signedout` | Confirmación tras cerrar sesión, con "Continue as …" o "Use another account" |
+
+- Cualquier persona del equipo de ejemplo entra con su email (por ejemplo `lin@pane.app`) y la contraseña **`pane1234`**.
+- Las cuentas nuevas se guardan en `localStorage`, contraseña incluida. Es solo una demo, sin servidor.
+- Sin sesión, cualquier página redirige a Sign in. Se cierra sesión desde el menú del perfil → **Sign out**.
+
 ## Interacciones globales
 
 - **Búsqueda ⌘K / Ctrl+K o `/`**: páginas, acciones, tareas, proyectos y personas, con navegación por teclado.
