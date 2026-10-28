@@ -146,24 +146,24 @@
 
 /* Main */
 .main {
-  padding: calc(var(--edge) + 2px) var(--gutter) 60px calc(var(--edge) + var(--side-w) + var(--gutter));
+  padding: var(--edge) var(--gutter) 60px calc(var(--edge) + var(--side-w) + var(--gutter));
   max-width: 2000px;
 }
 .view { animation: fade 0.35s var(--ease) backwards; }
 
-.page-head { min-height: 92px; padding-right: calc(500px + var(--isl-w, 0px)); padding-top: 2px; transition: padding-right 0.5s var(--ease); }
+.page-head { min-height: 60px; padding-right: calc(500px + var(--isl-w, 0px)); transition: padding-right 0.5s var(--ease); }
 .page-head h1 {
   font-family: var(--font-display);
   font-size: var(--fs-title);
   font-weight: 700;
   letter-spacing: -0.035em;
-  line-height: 1.04;
+  line-height: 1.02;
   animation: rise 0.7s var(--ease) backwards;
 }
-.page-head p { margin-top: 6px; font-size: var(--fs-lg); color: var(--text-2); animation: rise 0.7s 0.05s var(--ease) backwards; }
+.page-head p { margin-top: 8px; font-size: clamp(14px, 0.3vw + 13px, 17px); line-height: 24px; font-weight: 500; color: var(--text-2); animation: rise 0.7s 0.05s var(--ease) backwards; }
 .page-head--with-back { display: flex; gap: 14px; align-items: flex-start; }
 .page-head--with-back .round-btn { margin-top: 18px; }
-.page-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; margin: 16px 0 22px; }
+.page-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; margin: 18px 0 23px; }
 .page-bar .stats { animation: rise 0.7s 0.08s var(--ease) backwards; }
 .page-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; animation: rise 0.7s 0.12s var(--ease) backwards; }
 
