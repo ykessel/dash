@@ -1,4 +1,4 @@
-import { Controller, Get, Req, Res, UseGuards } from '@nestjs/common'
+import { Controller, Get, Logger, Req, Res, UseGuards } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import type { Request, Response } from 'express'
 import type { Env } from '../../config/env'
@@ -13,6 +13,8 @@ type CallbackUser = OAuthProfile | { error: string }
 
 @Controller('auth')
 export class OAuthController {
+  private readonly log = new Logger('OAuth')
+
   constructor(
     private readonly linker: IdentityLinker,
     private readonly sessions: SessionService,
@@ -53,7 +55,9 @@ export class OAuthController {
       return res.redirect(302, `${app}/#/auth/callback`)
     } catch (e) {
       if (e instanceof AppError) return back(e.code)
-      throw e
+      // Never leave the browser on a raw JSON error page mid-redirect.
+      this.log.error(e)
+      return back('oauth_failed')
     }
   }
 }

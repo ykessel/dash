@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { QueryFailedError } from 'typeorm'
 import type { Env } from '../config/env'
+import { isUniqueViolation } from '../common/db-errors'
 import { AppError } from '../common/http-exception.filter'
 import { MailService } from '../mail/mail.service'
 import { normalizeEmail } from '../users/email'
@@ -39,7 +39,7 @@ export class AuthService {
       user = await this.users.create({ ...input, passwordHash: await hashPassword(input.password), emailVerified: false })
     } catch (e) {
       // Two sign-ups racing for one address: the unique index decides.
-      if (e instanceof QueryFailedError && (e as QueryFailedError & { code?: string }).code === '23505') throw emailTaken()
+      if (isUniqueViolation(e)) throw emailTaken()
       throw e
     }
     await this.sendVerification(user)
@@ -98,6 +98,10 @@ export class AuthService {
         if (!user) throw e
       }
     } else if (!user.emailVerifiedAt) {
+      // Whoever registered this unverified account never proved the address; the link's owner just did.
+      // Drop their password and sessions so a squatted sign-up can't keep access.
+      await this.users.setPassword(user.id, null)
+      await this.sessions.revokeAllForUser(user.id)
       await this.users.markVerified(user.id)
       user = (await this.users.findById(user.id))!
     }

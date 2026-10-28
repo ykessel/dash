@@ -37,6 +37,22 @@ describe('IdentityLinker', () => {
     await expect(linker.resolve(profile())).rejects.toMatchObject({ code: 'account_exists_unverified' })
   })
 
+  it('two simultaneous first logins resolve to one user', async () => {
+    const [a, b] = await Promise.all([linker.resolve(profile()), linker.resolve(profile())])
+    expect(a.id).toBe(b.id)
+    const [{ n }] = await t.db.query(`SELECT count(*)::int AS n FROM oauth_accounts`)
+    expect(n).toBe(1)
+  })
+
+  it('a first login racing a magic-link sign-up for the same email resolves to that user', async () => {
+    const users = t.app.get(UsersService)
+    const [viaOAuth, viaLink] = await Promise.all([
+      linker.resolve(profile({ email: 'race@co.com' })),
+      users.create({ email: 'race@co.com', name: 'Race', emailVerified: true }),
+    ])
+    expect(viaOAuth.id).toBe(viaLink.id)
+  })
+
   it('refuses an email the provider has not verified', async () => {
     await expect(linker.resolve(profile({ emailVerified: false }))).rejects.toMatchObject({ code: 'email_unverified' })
     expect(await t.app.get(UsersService).findByEmail('lin@pane.app')).toBeNull()

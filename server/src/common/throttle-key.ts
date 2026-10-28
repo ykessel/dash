@@ -16,18 +16,21 @@ const emailOf = (req: Request) => {
  * Three counters on every route:
  * - `default`: per IP, 100/min (signup tightens it per route).
  * - `login`: per IP + email; off unless a route sets a limit.
- * - `mail`: per email address, whatever the IP; off unless a route sets a limit.
+ * - `mail`: per IP + email; off unless a route sets a limit.
+ * - `mailbox`: per email address across all IPs, looser, so one IP can't lock an owner out
+ *   but many IPs still can't flood one inbox; off unless a route sets a limit.
  */
 export const throttlers: ThrottlerModuleOptions = {
   throttlers: [
     { name: 'default', ttl: MIN, limit: 100 },
     { name: 'login', ttl: MIN, limit: NEVER, getTracker: (req: Record<string, unknown>) => `${(req as unknown as Request).ip}|${emailOf(req as unknown as Request)}` },
-    { name: 'mail', ttl: 15 * MIN, limit: NEVER, getTracker: (req: Record<string, unknown>) => emailOf(req as unknown as Request) || String((req as unknown as Request).ip) },
+    { name: 'mail', ttl: 15 * MIN, limit: NEVER, getTracker: (req: Record<string, unknown>) => `${(req as unknown as Request).ip}|${emailOf(req as unknown as Request)}` },
+    { name: 'mailbox', ttl: 60 * MIN, limit: NEVER, getTracker: (req: Record<string, unknown>) => emailOf(req as unknown as Request) || String((req as unknown as Request).ip) },
   ],
 }
 
 export const LOGIN_LIMIT = { login: { limit: 5, ttl: MIN } }
-export const MAIL_LIMIT = { mail: { limit: 3, ttl: 15 * MIN } }
+export const MAIL_LIMIT = { mail: { limit: 3, ttl: 15 * MIN }, mailbox: { limit: 20, ttl: 60 * MIN } }
 export const SIGNUP_LIMIT = { default: { limit: 10, ttl: 60 * MIN } }
 
 /** Answers 429 in the API's error shape, with a plain `Retry-After` header. */

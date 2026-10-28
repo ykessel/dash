@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import type { Repository } from 'typeorm'
+import { isUniqueViolation } from '../../common/db-errors'
 import { AppError } from '../../common/http-exception.filter'
 import type { OAuthAccount, OAuthProvider } from '../../users/oauth-account.entity'
 import { OAuthAccount as OAuthAccountEntity } from '../../users/oauth-account.entity'
@@ -28,6 +29,16 @@ export class IdentityLinker {
   ) {}
 
   async resolve(p: OAuthProfile): Promise<User> {
+    try {
+      return await this.tryResolve(p)
+    } catch (e) {
+      // A parallel callback or sign-up created the user or link first; the second pass finds it.
+      if (isUniqueViolation(e)) return this.tryResolve(p)
+      throw e
+    }
+  }
+
+  private async tryResolve(p: OAuthProfile): Promise<User> {
     const linked = await this.accounts.findOneBy({ provider: p.provider, providerUserId: p.providerUserId })
     if (linked) {
       const user = await this.users.findById(linked.userId)

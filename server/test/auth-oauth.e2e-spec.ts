@@ -1,5 +1,6 @@
 import type { ExecutionContext } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import { IdentityLinker } from '../src/auth/oauth/identity-linker.service'
 import { loadEnv } from '../src/config/env'
 import { GithubOAuthGuard, GoogleOAuthGuard } from '../src/auth/oauth/oauth.guards'
 import { createTestApp, resetAll, type TestApp } from './utils/app'
@@ -49,6 +50,23 @@ describe('OAuth callbacks', () => {
 
   it('a failed or cancelled provider round trip goes back with oauth_failed', async () => {
     const res = await callback('google').expect(302)
+    expect(res.headers.location).toBe('http://localhost:5173/#/signin?error=oauth_failed')
+  })
+})
+
+describe('OAuth callback when something unexpected fails', () => {
+  let t: TestApp
+  beforeAll(async () => {
+    t = await createTestApp(b => b
+      .overrideGuard(GoogleOAuthGuard).useValue(fakeProvider)
+      .overrideProvider(IdentityLinker).useValue({ resolve: () => Promise.reject(new Error('db down')) }))
+  })
+  afterAll(() => t.app.close())
+
+  it('still sends the browser back to the app', async () => {
+    const res = await t.http.get('/api/v1/auth/google/callback')
+      .set('x-test-profile', JSON.stringify({ provider: 'google', providerUserId: 'g-1', email: 'lin@pane.app', emailVerified: true, name: 'Lin' }))
+      .expect(302)
     expect(res.headers.location).toBe('http://localhost:5173/#/signin?error=oauth_failed')
   })
 })

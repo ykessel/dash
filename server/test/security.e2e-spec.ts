@@ -22,13 +22,27 @@ describe('rate limits, headers and CORS', () => {
   })
 
   it.each(['/api/v1/auth/magic-link', '/api/v1/auth/password/forgot', '/api/v1/auth/verify-email/resend'])(
-    '%s allows 3 mails per address per 15 minutes',
+    '%s allows 3 mails per address from one IP per 15 minutes',
     async path => {
       for (let i = 0; i < 3; i++) await t.http.post(path).send({ email: 'lin@pane.app' }).expect(202)
       await t.http.post(path).send({ email: 'Lin@pane.app' }).expect(429)
       await t.http.post(path).send({ email: 'other@pane.app' }).expect(202)
     },
   )
+
+  it('one IP spending the limit for an address does not lock out its owner elsewhere', async () => {
+    const from = (ip: string) => t.http.post('/api/v1/auth/magic-link').set('X-Forwarded-For', ip).send({ email: 'lin@pane.app' })
+    for (let i = 0; i < 3; i++) await from('203.0.113.9').expect(202)
+    await from('203.0.113.9').expect(429)
+    await from('198.51.100.7').expect(202)
+  })
+
+  it('an address gets at most 20 mails an hour across all IPs', async () => {
+    for (let i = 0; i < 20; i++) {
+      await t.http.post('/api/v1/auth/magic-link').set('X-Forwarded-For', `203.0.113.${i}`).send({ email: 'lin@pane.app' }).expect(202)
+    }
+    await t.http.post('/api/v1/auth/magic-link').set('X-Forwarded-For', '203.0.113.200').send({ email: 'lin@pane.app' }).expect(429)
+  })
 
   it('sends security headers', async () => {
     const res = await t.http.get('/api/v1/health').expect(200)

@@ -34,7 +34,7 @@ export class UsersService {
       .execute()
   }
 
-  async setPassword(id: string, hash: string): Promise<void> {
+  async setPassword(id: string, hash: string | null): Promise<void> {
     await this.repo.update({ id }, { passwordHash: hash })
   }
 }

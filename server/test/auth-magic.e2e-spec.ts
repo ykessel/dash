@@ -34,6 +34,18 @@ describe('magic link', () => {
     expect((await t.app.get(UsersService).findById(u.id))!.emailVerifiedAt).toBeInstanceOf(Date)
   })
 
+  it('claiming a pre-registered unverified account locks out whoever registered it', async () => {
+    // Someone signed up with this address and a password of their own, and never verified it.
+    await seedUser(t, 'lin@pane.app', 'attacker-pass', false)
+    const squatter = refreshCookie(await t.http.post('/api/v1/auth/login').send({ email: 'lin@pane.app', password: 'attacker-pass' }).expect(200))
+
+    await ask('lin@pane.app').expect(202)
+    await verify(t.mailer.tokenFor('lin@pane.app')).expect(200)
+
+    await t.http.post('/api/v1/auth/login').send({ email: 'lin@pane.app', password: 'attacker-pass' }).expect(401)
+    await t.http.post('/api/v1/auth/refresh').set('Cookie', squatter).expect(401)
+  })
+
   it('a link works once', async () => {
     await ask('lin@pane.app').expect(202)
     const token = t.mailer.tokenFor('lin@pane.app')
