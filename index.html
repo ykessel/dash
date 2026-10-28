@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-wall="ash" data-accent="blue" data-glass="tinted">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Pane — a team workspace made of glass</title>
+    <meta name="description" content="Demo workspace for small teams: live home widgets, a drag-and-drop task board, calendar, projects, insights, team and settings — in liquid glass, light and dark." />
+    <meta name="theme-color" content="#0a0a0c" />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap" rel="stylesheet" />
+    <script>
+      // Apply the saved look before first paint so the theme never flashes.
+      (function (root) {
+        try {
+          var look = JSON.parse(localStorage.getItem('pane-demo:look') || '{}');
+          var theme = look.theme || 'dark';
+          if (theme === 'system') theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          root.dataset.theme = theme;
+          if (look.wall) root.dataset.wall = look.wall;
+          if (look.accent) root.dataset.accent = look.accent;
+          if (look.glass) root.dataset.glass = look.glass;
+          if (look.solid) root.classList.add('is-solid');
+        } catch (e) {}
+      })(document.documentElement);
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
