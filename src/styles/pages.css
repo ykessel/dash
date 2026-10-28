@@ -163,39 +163,90 @@
 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--hue); display: inline-block; }
 
 .board { display: grid; grid-template-columns: repeat(4, minmax(250px, 1fr)); gap: var(--gap); align-items: start; }
-.col { border-radius: var(--r-xl); padding: 10px 8px 12px; min-height: 300px; display: flex; flex-direction: column; transition: box-shadow 0.25s, transform 0.3s var(--spring); }
-.col.is-over { box-shadow: var(--depth), var(--shadow), inset 0 0 0 2px color-mix(in srgb, var(--accent-ink) 55%, transparent); }
+.col { position: relative; isolation: isolate; border-radius: var(--r-xl); padding: 10px 8px 12px; min-height: min(70vh, 760px); display: flex; flex-direction: column; }
+/* Drop-target highlight: an accent wash and ring that fade in under the column. */
+.col::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent-ink) 48%, transparent);
+  opacity: 0;
+  transition: opacity 0.25s var(--ease);
+}
+.col.is-over::after { opacity: 1; }
 .col__head { display: flex; align-items: center; gap: 8px; padding: 6px 8px 12px; }
-.col__head h2 { font-size: var(--fs-lg); font-weight: 650; }
+.col__head h2 { font-size: var(--fs-lg); font-weight: 650; white-space: nowrap; }
+.col__head .count { animation: pop 0.4s var(--spring); }
 .col__dot { width: 10px; height: 10px; border-radius: 50%; background: var(--hue); flex: none; }
 .col__dot--todo { background: none; box-shadow: inset 0 0 0 1.8px var(--text-2); }
 .col__add { margin-left: auto; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; color: var(--text-2); transition: background-color 0.2s, transform 0.3s var(--spring); }
 .col__add:hover { background: var(--fill); color: var(--text); }
 .col__add:active { transform: scale(0.85) rotate(90deg); }
-.col__body { display: grid; gap: 10px; }
-.col__empty { border: 1.5px dashed var(--sep); border-radius: 18px; }
+.col__body { position: relative; flex: 1; display: flex; flex-direction: column; gap: 10px; min-height: 72px; }
+.col__empty { border: 1.5px dashed var(--sep); border-radius: 18px; min-height: 92px; display: grid; place-items: center; }
 .col__more { margin: 14px auto 2px; display: block; }
-.drop-ghost { height: 64px; border-radius: 18px; border: 2px dashed color-mix(in srgb, var(--accent-ink) 55%, transparent); background: var(--accent-soft); animation: ghost 0.3s var(--spring) both; }
-@keyframes ghost { from { height: 0; opacity: 0; } }
+
+/* Where the lifted card will land */
+.tslot {
+  flex: none;
+  border-radius: 18px;
+  border: 1.5px dashed color-mix(in srgb, var(--accent-ink) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  animation: slot-in 0.4s var(--spring) both;
+}
+@keyframes slot-in { from { opacity: 0; transform: scale(0.94); } }
 
 .tcard {
   position: relative;
-  padding: 12px 12px 10px;
-  border-radius: 18px;
-  background: var(--card);
-  box-shadow: inset 0 1px 1px rgb(255 255 255 / 0.1), inset 0 0 0 1px var(--sep), 0 6px 16px -10px rgb(0 0 0 / 0.5);
-  cursor: grab;
   display: grid;
-  gap: 8px;
-  transition: transform 0.35s var(--spring), box-shadow 0.25s, opacity 0.2s, background-color 0.2s;
+  gap: 10px;
+  padding: 12px 12px 12px 14px;
+  border-radius: 18px;
+  background: var(--glass-thick);
+  box-shadow: var(--shadow), inset 0 1px 0 var(--rim-mid);
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+  transition: background-color 0.3s var(--ease);
   animation: rise 0.5s var(--ease) both;
 }
-[data-theme='light'] .tcard { background: rgb(255 255 255 / 0.62); box-shadow: inset 0 1px 1px #fff, 0 0 0 1px rgb(255 255 255 / 0.7), 0 6px 16px -10px rgb(20 30 80 / 0.35); }
-.tcard:hover { transform: translateY(-2px); box-shadow: inset 0 1px 1px rgb(255 255 255 / 0.14), inset 0 0 0 1px var(--sep), var(--shadow-lift); }
-.tcard:active { cursor: grabbing; }
-.tcard.is-dragging { opacity: 0.35; transform: scale(0.97); }
-.tcard.is-landed { animation: land 0.55s var(--spring) both; }
-@keyframes land { 0% { transform: scale(1.06) rotate(-1deg); } 100% { transform: none; } }
+/* Two stacked shadows that fade in when the card is lifted: a deep drop shadow and an accent glow. */
+.tcard::before,
+.tcard::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s var(--ease);
+}
+.tcard::before { box-shadow: var(--shadow-lift); }
+.tcard::after { box-shadow: 0 30px 46px -20px color-mix(in srgb, var(--accent) 55%, transparent); }
+.tcard:hover { background: color-mix(in srgb, var(--glass-thick) 88%, var(--fill-2)); }
+.tcard:focus-visible { outline: 2.5px solid var(--accent-ink); outline-offset: 2px; }
+.tcard.is-lifted { background: var(--glass-solid); cursor: grabbing; animation: none; }
+.tcard.is-lifted::before, .tcard.is-lifted::after { opacity: 1; }
+.tcard.is-settled, .tcard.is-landed { animation: none; }
+.tcard.is-landed .check { animation: check-in 0.75s cubic-bezier(.34, 2.2, .5, 1) both; }
+.tcard.is-landed .check::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--accent-ink);
+  animation: burst 0.7s var(--ease) both;
+  pointer-events: none;
+}
+@keyframes check-in { from { transform: scale(0) rotate(-40deg); } }
+@keyframes burst { from { transform: scale(0.5); opacity: 0.9; } to { transform: scale(2.8); opacity: 0; } }
+.tcard .check { position: relative; }
 .tcard__tags { display: flex; gap: 6px; align-items: center; min-width: 0; }
 .tcard__tags .tag { min-width: 0; }
 .tcard h3 { font-size: var(--fs-md); font-weight: 600; line-height: 1.3; display: flex; gap: 8px; align-items: flex-start; }
@@ -208,6 +259,14 @@
 .tcard__foot .av { margin-left: auto; }
 .tcard__due, .tcard__meta { display: inline-flex; align-items: center; gap: 5px; }
 .tcard__due.is-today, .lrow__due.is-today { color: var(--accent-ink); }
+
+/* The floating layer the lifted card lives in while it is dragged */
+.tk-layer { position: fixed; inset: 0; z-index: 70; pointer-events: none; }
+.tk-float { position: absolute; will-change: transform; transform-origin: 50% 40%; }
+.tk-float__lift { will-change: transform; }
+.tk-float .tcard { pointer-events: none; }
+html.is-card-dragging, html.is-card-dragging * { cursor: grabbing !important; user-select: none !important; -webkit-user-select: none !important; }
+.board.is-dragging { scroll-snap-type: none !important; }
 
 .list-card { padding-bottom: 10px; }
 .lgroup__head { display: flex; align-items: center; gap: 10px; padding: 10px 8px; font-size: var(--fs-lg); font-weight: 650; }

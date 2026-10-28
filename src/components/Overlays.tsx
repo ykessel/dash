@@ -284,7 +284,7 @@ export function DrawerHost() {
 }
 
 function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
-  const { data, me, person, project, updateTask, removeTask, startFocus, toggleDone } = useStore()
+  const { data, me, person, project, updateTask, moveTask, removeTask, startFocus, toggleDone } = useStore()
   const t = data.tasks.find(x => x.id === id)
   const [sub, setSub] = useState('')
   const [msg, setMsg] = useState('')
@@ -316,7 +316,7 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
       <div style={{ marginBottom: 16 }}>
         <Seg
           value={t.status}
-          onChange={s => updateTask(t.id, { status: s, doneAt: s === 'done' ? todayIso() : undefined })}
+          onChange={s => moveTask(t.id, s, 'top')}
           options={(Object.keys(STATUS_LABEL) as Status[]).map(s => ({ value: s, label: STATUS_LABEL[s] }))}
           label="Status"
         />

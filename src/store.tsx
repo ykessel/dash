@@ -203,7 +203,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setData(d => {
       const col = d.tasks.filter(t => t.status === status && t.id !== id).sort((a, b) => a.order - b.order)
       let order: number
-      if (beforeId) {
+      if (beforeId === 'top') {
+        order = (col[0]?.order ?? 0) - 1
+      } else if (beforeId) {
         const i = col.findIndex(t => t.id === beforeId)
         const prev = col[i - 1]?.order ?? (col[i]?.order ?? 0) - 2
         order = ((prev + (col[i]?.order ?? prev + 2)) / 2)
@@ -225,13 +227,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       before = d.tasks.find(t => t.id === id)
       return {
         ...d,
-        tasks: d.tasks.map(t =>
-          t.id === id
-            ? t.status === 'done'
-              ? { ...t, status: 'todo', doneAt: undefined }
-              : { ...t, status: 'done', doneAt: todayIso() }
-            : t,
-        ),
+        tasks: d.tasks.map(t => {
+          if (t.id !== id) return t
+          // The task lands at the top of the column it moves into.
+          const to: Status = t.status === 'done' ? 'todo' : 'done'
+          const top = Math.min(0, ...d.tasks.filter(x => x.status === to).map(x => x.order)) - 1
+          return to === 'done' ? { ...t, status: to, order: top, doneAt: todayIso() } : { ...t, status: to, order: top, doneAt: undefined }
+        }),
       }
     })
     queueMicrotask(() => {
