@@ -3,23 +3,36 @@ import { Test, type TestingModuleBuilder } from '@nestjs/testing'
 import request from 'supertest'
 import { DataSource } from 'typeorm'
 import { AppModule } from '../../src/app.module'
+import { CLOCK } from '../../src/common/clock'
+import { MAILER } from '../../src/mail/mailer'
 import { configureApp } from '../../src/main'
+import { FakeClock } from './fake-clock'
+import { MemoryMailer } from './memory-mailer'
 
 export interface TestApp {
   app: INestApplication
   http: ReturnType<typeof request>
   db: DataSource
+  mailer: MemoryMailer
+  clock: FakeClock
 }
 
-/** Boots the real AppModule against the test database. `overrides` swaps providers (mailer, clock, strategies). */
+/**
+ * Boots the real AppModule against the test database, with an in-memory
+ * mailer and a movable clock. `overrides` swaps more providers (e.g. OAuth strategies).
+ */
 export async function createTestApp(overrides?: (b: TestingModuleBuilder) => TestingModuleBuilder): Promise<TestApp> {
+  const mailer = new MemoryMailer()
+  const clock = new FakeClock()
   let builder = Test.createTestingModule({ imports: [AppModule] })
+    .overrideProvider(MAILER).useValue(mailer)
+    .overrideProvider(CLOCK).useValue(clock)
   if (overrides) builder = overrides(builder)
   const moduleRef = await builder.compile()
   const app = moduleRef.createNestApplication()
   configureApp(app)
   await app.init()
-  return { app, http: request(app.getHttpServer()), db: app.get(DataSource) }
+  return { app, http: request(app.getHttpServer()), db: app.get(DataSource), mailer, clock }
 }
 
 /** Empties every table except the migrations log. */
@@ -29,4 +42,11 @@ export async function resetDb(db: DataSource): Promise<void> {
   )
   if (!rows.length) return
   await db.query(`TRUNCATE ${rows.map(r => `"${r.tablename}"`).join(', ')} RESTART IDENTITY CASCADE`)
+}
+
+/** Fresh state between tests: empty tables, empty outbox, real time. */
+export async function resetAll(t: TestApp): Promise<void> {
+  await resetDb(t.db)
+  t.mailer.clear()
+  t.clock.reset()
 }
