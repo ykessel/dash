@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState, type DragEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Icon } from '../components/Icon'
 import { STATUS_LABEL } from '../components/Overlays'
 import { Avatar, Check, CountUp, Popover, Prio, ProjectTag, Seg, Stat } from '../components/ui'
@@ -118,93 +119,362 @@ function Filters(p: {
   )
 }
 
-/* ---------------- Board ---------------- */
+/* ---------------- Board ----------------
+   Pointer-driven drag and drop. The picked card is lifted into a fixed layer
+   above the page and follows the pointer with a little tilt; a dashed slot
+   marks where it will land and the other cards glide out of the way (FLIP).
+   On release the card flies into its slot and settles. */
+
+interface DragView {
+  id: string
+  col: Status
+  index: number
+  h: number
+}
+
+interface Session {
+  id: string
+  pointerId: number
+  mouse: boolean
+  x0: number
+  y0: number
+  x: number
+  y: number
+  offX: number
+  offY: number
+  left: number
+  top: number
+  width: number
+  h: number
+  on: boolean
+  col0: Status
+  index0: number
+  col: Status
+  index: number
+  rot: number
+  vx: number
+  lastX: number
+  lastT: number
+  raf: number
+  hold?: number
+  landing: boolean
+  cleanup?: () => void
+  press?: Animation
+}
+
+const clamp = (min: number, max: number, v: number) => Math.max(min, Math.min(max, v))
+const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches
+const SPRING = 'cubic-bezier(.34, 1.56, .64, 1)'
 
 function Board({ tasks }: { tasks: Task[] }) {
-  const { moveTask, openModal, notify } = useStore()
-  const [drag, setDrag] = useState<string | null>(null)
-  const [over, setOver] = useState<{ col: Status; before: string | null } | null>(null)
+  const { moveTask, openModal, openDrawer, notify } = useStore()
+  const [drag, setDrag] = useState<DragView | null>(null)
   const [landed, setLanded] = useState<string | null>(null)
   const [showAllDone, setShowAllDone] = useState(false)
+  const boardRef = useRef<HTMLDivElement>(null)
+  const floatRef = useRef<HTMLDivElement>(null)
+  const liftRef = useRef<HTMLDivElement>(null)
+  const ses = useRef<Session | null>(null)
+  const flipRects = useRef<Map<string, DOMRect> | null>(null)
+  const clickBlock = useRef(0)
+  // Cards that were dropped skip the entrance animation for good, so it never replays.
+  const settled = useRef(new Set<string>())
 
-  const byCol = (s: Status) => {
-    const list = tasks.filter(t => t.status === s)
-    return s === 'done'
-      ? list.sort((a, b) => ((a.doneAt ?? '') < (b.doneAt ?? '') ? 1 : -1) || a.order - b.order)
-      : list.sort((a, b) => a.order - b.order)
+  const byCol = (s: Status, without?: string) =>
+    tasks.filter(t => t.status === s && t.id !== without).sort((a, b) => a.order - b.order)
+
+  /* ----- FLIP: remember where every card is, then animate from there after React moves them ----- */
+  const snapshot = () => {
+    const m = new Map<string, DOMRect>()
+    boardRef.current?.querySelectorAll<HTMLElement>('[data-card]').forEach(el => m.set(el.dataset.card!, el.getBoundingClientRect()))
+    flipRects.current = m
   }
+  useLayoutEffect(() => {
+    const prev = flipRects.current
+    flipRects.current = null
+    if (!prev || reduceMotion()) return
+    boardRef.current?.querySelectorAll<HTMLElement>('[data-card]').forEach(el => {
+      const r0 = prev.get(el.dataset.card!)
+      if (!r0) return
+      const r1 = el.getBoundingClientRect()
+      const dx = r0.left - r1.left
+      const dy = r0.top - r1.top
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return
+      el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 420, easing: 'cubic-bezier(.2, .9, .25, 1.08)' })
+    })
+  }, [drag?.col, drag?.index])
 
-  const onOver = (e: DragEvent, col: Status) => {
-    if (!drag) return
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-    const cards = Array.from((e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('[data-card]'))
-    let before: string | null = null
-    for (const c of cards) {
-      if (c.dataset.card === drag) continue
+  /* ----- hit testing: which column, and where in it ----- */
+  const target = (s: Session): { col: Status; index: number } => {
+    const board = boardRef.current
+    if (!board) return { col: s.col, index: s.index }
+    const cols = Array.from(board.querySelectorAll<HTMLElement>('[data-col]'))
+    let best = cols[0]
+    let bestD = Infinity
+    for (const c of cols) {
       const r = c.getBoundingClientRect()
-      if (e.clientY < r.top + r.height / 2) { before = c.dataset.card!; break }
+      const d = s.x < r.left ? r.left - s.x : s.x > r.right ? s.x - r.right : 0
+      if (d < bestD) { bestD = d; best = c }
     }
-    if (over?.col !== col || over.before !== before) setOver({ col, before })
+    const col = best.dataset.col as Status
+    const list = best.querySelector<HTMLElement>('.col__body')!
+    const lr = list.getBoundingClientRect()
+    const cy = s.y - s.offY + s.h / 2
+    let index = 0
+    list.querySelectorAll<HTMLElement>('[data-card]').forEach(el => {
+      // offsetTop ignores the FLIP transforms, so the target doesn't jitter
+      if (lr.top + el.offsetTop + el.offsetHeight / 2 < cy) index++
+    })
+    return { col, index }
   }
 
-  const onDrop = (e: DragEvent, col: Status) => {
-    e.preventDefault()
-    if (!drag) return
-    const t = tasks.find(x => x.id === drag)
-    moveTask(drag, col, over?.before ?? null)
-    if (t && t.status !== col) notify(`Moved to ${STATUS_LABEL[col]}`, col === 'done' ? 'ok' : 'info')
-    setLanded(drag)
-    window.setTimeout(() => setLanded(null), 600)
-    setDrag(null)
-    setOver(null)
+  /* ----- per-frame: follow the pointer, tilt with velocity, auto-scroll, retarget ----- */
+  const frame = () => {
+    const s = ses.current
+    if (!s || !s.on || s.landing) return
+    const now = performance.now()
+    const dt = Math.max(1, now - s.lastT)
+    s.vx = s.vx * 0.75 + ((s.x - s.lastX) / dt) * 0.25
+    s.lastX = s.x
+    s.lastT = now
+    const want = reduceMotion() ? 0 : clamp(-9, 9, 2.5 + s.vx * 7)
+    s.rot += (want - s.rot) * 0.18
+    const el = floatRef.current
+    if (el) el.style.transform = `translate3d(${s.x - s.offX - s.left}px, ${s.y - s.offY - s.top}px, 0) rotate(${s.rot.toFixed(2)}deg)`
+
+    // Auto-scroll near the edges of the window, and sideways on a scrolling board.
+    const edge = 70
+    if (s.y < edge) window.scrollBy(0, -Math.ceil((edge - s.y) / 5))
+    else if (s.y > innerHeight - edge) window.scrollBy(0, Math.ceil((s.y - innerHeight + edge) / 5))
+    const board = boardRef.current
+    if (board && board.scrollWidth > board.clientWidth) {
+      const br = board.getBoundingClientRect()
+      if (s.x < br.left + edge) board.scrollLeft -= Math.ceil((br.left + edge - s.x) / 4)
+      else if (s.x > br.right - edge) board.scrollLeft += Math.ceil((s.x - br.right + edge) / 4)
+    }
+
+    const t = target(s)
+    if (t.col !== s.col || t.index !== s.index) {
+      s.col = t.col
+      s.index = t.index
+      snapshot()
+      setDrag(d => (d ? { ...d, col: t.col, index: t.index } : d))
+    }
+    s.raf = requestAnimationFrame(frame)
   }
+
+  /* ----- lift ----- */
+  const lift = () => {
+    const s = ses.current
+    if (!s || s.on) return
+    const el = boardRef.current?.querySelector<HTMLElement>(`[data-card="${s.id}"]`)
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    const list = Array.from(el.parentElement!.querySelectorAll<HTMLElement>('[data-card]'))
+    Object.assign(s, {
+      on: true, left: r.left, top: r.top, width: r.width, h: r.height,
+      offX: s.x0 - r.left, offY: s.y0 - r.top, index: list.indexOf(el), index0: list.indexOf(el), rot: 0,
+    })
+    el.getAnimations().forEach(a => a.cancel())
+    document.documentElement.classList.add('is-card-dragging')
+    if (!s.mouse) navigator.vibrate?.(8)
+    setDrag({ id: s.id, col: s.col, index: s.index, h: r.height })
+    s.raf = requestAnimationFrame(frame)
+  }
+
+  // Once the floating card exists, pop it up.
+  useLayoutEffect(() => {
+    if (!drag || reduceMotion()) return
+    const s = ses.current
+    liftRef.current?.animate([{ transform: `scale(${s?.mouse ? 1 : 0.975})` }, { transform: 'scale(1.045)' }], { duration: 500, easing: SPRING, fill: 'forwards' })
+  }, [drag?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ----- drop / cancel ----- */
+  const finish = (cancel: boolean) => {
+    const s = ses.current
+    if (!s) return
+    window.clearTimeout(s.hold)
+    ;(s.cleanup ?? removeListeners)()
+    s.press?.cancel()
+    if (!s.on) { ses.current = null; return }
+    clickBlock.current = Date.now()
+    s.landing = true
+    cancelAnimationFrame(s.raf)
+    document.documentElement.classList.remove('is-card-dragging')
+    if (cancel && (s.col !== s.col0 || s.index !== s.index0)) {
+      s.col = s.col0
+      s.index = s.index0
+      snapshot()
+      setDrag(d => (d ? { ...d, col: s.col0, index: s.index0 } : d))
+    }
+    // Wait a frame so the slot is in its final place, then fly the card into it.
+    requestAnimationFrame(() => requestAnimationFrame(() => land(s, cancel)))
+  }
+
+  const land = (s: Session, cancel: boolean) => {
+    const slot = boardRef.current?.querySelector<HTMLElement>('.tslot')
+    const el = floatRef.current
+    const commit = () => {
+      const t = tasks.find(x => x.id === s.id)
+      if (!cancel && t && (s.col !== s.col0 || s.index !== s.index0)) {
+        const rest = byCol(s.col, s.id)
+        moveTask(s.id, s.col, rest[s.index]?.id ?? null)
+        if (s.col !== s.col0) notify(s.col === 'done' ? `“${t.title}” done` : `Moved to ${STATUS_LABEL[s.col]}`, s.col === 'done' ? 'ok' : 'info')
+        if (s.col === 'done') {
+          setLanded(s.id)
+          window.setTimeout(() => setLanded(l => (l === s.id ? null : l)), 900)
+        }
+      }
+      settled.current.add(s.id)
+      ses.current = null
+      setDrag(null)
+    }
+    if (!slot || !el || reduceMotion()) { commit(); return }
+    const r = slot.getBoundingClientRect()
+    const from = el.style.transform
+    const to = `translate3d(${r.left - s.left}px, ${r.top - s.top}px, 0) rotate(0deg)`
+    liftRef.current?.animate([{ transform: 'scale(1.045)' }, { transform: 'scale(1)' }], { duration: 380, easing: 'cubic-bezier(.2, .8, .2, 1)', fill: 'forwards' })
+    const anim = el.animate([{ transform: from }, { transform: to }], { duration: 380, easing: 'cubic-bezier(.2, .8, .2, 1)', fill: 'forwards' })
+    el.classList.add('is-landing')
+    anim.onfinish = commit
+    anim.oncancel = commit
+  }
+
+  /* ----- pointer plumbing ----- */
+  const onMove = (e: PointerEvent) => {
+    const s = ses.current
+    if (!s || e.pointerId !== s.pointerId) return
+    s.x = e.clientX
+    s.y = e.clientY
+    if (!s.on) {
+      const d = Math.hypot(s.x - s.x0, s.y - s.y0)
+      if (s.mouse && d > 5) lift()
+      else if (!s.mouse && d > 10) finish(true) // a touch that moves before the hold is a scroll
+    }
+  }
+  const onUp = (e: PointerEvent) => { if (ses.current && e.pointerId === ses.current.pointerId) finish(false) }
+  const onCancel = () => finish(true)
+  const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && ses.current?.on) { e.stopPropagation(); finish(true) } }
+  const onTouchMove = (e: TouchEvent) => { if (ses.current?.on && e.cancelable) e.preventDefault() }
+  const removeListeners = () => {
+    removeEventListener('pointermove', onMove)
+    removeEventListener('pointerup', onUp)
+    removeEventListener('pointercancel', onCancel)
+    removeEventListener('keydown', onKey, true)
+    document.removeEventListener('touchmove', onTouchMove)
+  }
+  useEffect(() => () => {
+    ses.current?.cleanup?.()
+    cancelAnimationFrame(ses.current?.raf ?? 0)
+    document.documentElement.classList.remove('is-card-dragging')
+  }, [])
+
+  const onPointerDown = (e: React.PointerEvent, t: Task) => {
+    if (ses.current || (e.pointerType === 'mouse' && e.button !== 0)) return
+    if ((e.target as HTMLElement).closest('button, a, input')) return
+    const mouse = e.pointerType === 'mouse'
+    ses.current = {
+      id: t.id, pointerId: e.pointerId, mouse, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY,
+      offX: 0, offY: 0, left: 0, top: 0, width: 0, h: 0, on: false, col0: t.status, index0: 0, col: t.status, index: 0,
+      rot: 0, vx: 0, lastX: e.clientX, lastT: performance.now(), raf: 0, landing: false, cleanup: removeListeners,
+    }
+    if (!mouse) {
+      // Touch events keep targeting the card node even after React moves it
+      // out of the list, so block scrolling on that node once it is lifted.
+      const node = e.currentTarget as HTMLElement
+      node.addEventListener('touchmove', onTouchMove, { passive: false })
+      const prev = removeListeners
+      ses.current.cleanup = () => { prev(); node.removeEventListener('touchmove', onTouchMove) }
+      // Touch: press and hold to pick a card up.
+      ses.current.hold = window.setTimeout(lift, 280)
+      ses.current.press = node.animate([{ transform: 'scale(1)' }, { transform: 'scale(.975)' }], { duration: 280, easing: 'ease-out', fill: 'forwards' })
+    }
+    addEventListener('pointermove', onMove, { passive: true })
+    addEventListener('pointerup', onUp)
+    addEventListener('pointercancel', onCancel)
+    addEventListener('keydown', onKey, true)
+    document.addEventListener('touchmove', onTouchMove, { passive: false })
+  }
+
+  const open = (id: string) => {
+    if (Date.now() - clickBlock.current < 250) return
+    openDrawer({ kind: 'task', id })
+  }
+
+  const dragged = drag ? tasks.find(t => t.id === drag.id) : undefined
 
   return (
-    <div className="board">
+    <div className={`board ${drag ? 'is-dragging' : ''}`} ref={boardRef}>
       {COLS.map((s, ci) => {
-        let list = byCol(s)
-        const total = list.length
+        const all = byCol(s, drag?.id)
+        // Counts stay put while dragging and only change once the card is dropped.
+        const total = tasks.filter(t => t.status === s).length
         const cap = s === 'done' && !showAllDone ? 8 : Infinity
-        list = list.slice(0, cap)
+        const list = all.slice(0, Math.max(cap, drag && drag.col === s ? drag.index : 0))
+        const items: React.ReactNode[] = list.map(t => (
+          <Card
+            key={t.id}
+            t={t}
+            landed={landed === t.id}
+            settled={settled.current.has(t.id)}
+            onPointerDown={e => onPointerDown(e, t)}
+            onOpen={() => open(t.id)}
+          />
+        ))
+        if (drag && drag.col === s) {
+          items.splice(Math.min(drag.index, items.length), 0, <div key={`slot-${s}`} className="tslot" style={{ height: drag.h }} aria-hidden="true" />)
+        }
         return (
           <section
             key={s}
-            className={`col glass glass--chrome rise ${over?.col === s ? 'is-over' : ''}`}
+            data-col={s}
+            className={`col glass glass--chrome rise ${drag?.col === s ? 'is-over' : ''}`}
             style={{ ['--i' as string]: ci + 2 }}
-            onDragOver={e => onOver(e, s)}
-            onDragLeave={e => { if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) setOver(null) }}
-            onDrop={e => onDrop(e, s)}
             aria-label={STATUS_LABEL[s]}
           >
             <header className="col__head">
               <span className={`col__dot col__dot--${s}`} data-hue={COL_HUE[s]} />
               <h2>{STATUS_LABEL[s]}</h2>
-              <span className="count">{total}</span>
+              <span className="count num" key={total}>{total}</span>
               <button className="col__add" aria-label={`Add to ${STATUS_LABEL[s]}`} onClick={() => openModal({ kind: 'task', preset: { status: s } })}><Icon name="plus" size={18} /></button>
             </header>
             <div className="col__body">
-              {list.map(t => (
-                <div key={t.id} style={{ display: 'contents' }}>
-                  {over?.col === s && over.before === t.id && drag !== t.id && <div className="drop-ghost" />}
-                  <Card t={t} dragging={drag === t.id} landed={landed === t.id} onDragStart={() => setDrag(t.id)} onDragEnd={() => { setDrag(null); setOver(null) }} />
-                </div>
-              ))}
-              {over?.col === s && over.before === null && <div className="drop-ghost" />}
-              {total === 0 && over?.col !== s && <p className="empty col__empty">Drop tasks here</p>}
+              {items}
+              {all.length === 0 && !(drag && drag.col === s) && <p className="empty col__empty">Drop tasks here</p>}
             </div>
-            {s === 'done' && total > 8 && (
-              <button className="link col__more" onClick={() => setShowAllDone(v => !v)}>{showAllDone ? 'Show less' : `Show all ${total}`}</button>
+            {s === 'done' && all.length > 8 && (
+              <button className="link col__more" onClick={() => setShowAllDone(v => !v)}>{showAllDone ? 'Show less' : `Show all ${all.length}`}</button>
             )}
           </section>
         )
       })}
+      {drag && dragged && ses.current && createPortal(
+        <div className="tk-layer" aria-hidden="true">
+          <div
+            ref={floatRef}
+            className="tk-float"
+            style={{ left: ses.current.left, top: ses.current.top, width: ses.current.width }}
+          >
+            <div ref={liftRef} className="tk-float__lift">
+              <Card t={dragged} lifted />
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   )
 }
 
-function Card({ t, dragging, landed, onDragStart, onDragEnd }: { t: Task; dragging: boolean; landed: boolean; onDragStart: () => void; onDragEnd: () => void }) {
-  const { project, person, openDrawer, toggleDone } = useStore()
+function Card({ t, landed, settled, lifted, onPointerDown, onOpen }: {
+  t: Task
+  landed?: boolean
+  settled?: boolean
+  lifted?: boolean
+  onPointerDown?: (e: React.PointerEvent) => void
+  onOpen?: () => void
+}) {
+  const { project, person, toggleDone } = useStore()
   const p = project(t.project)
   const a = person(t.assignee)
   const subs = t.subtasks.length
@@ -213,14 +483,12 @@ function Card({ t, dragging, landed, onDragStart, onDragEnd }: { t: Task; draggi
   const isToday = !done && t.due <= todayIso()
   return (
     <article
-      className={`tcard ${dragging ? 'is-dragging' : ''} ${landed ? 'is-landed' : ''}`}
-      data-card={t.id}
-      draggable
-      onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', t.id); onDragStart() }}
-      onDragEnd={onDragEnd}
-      onClick={() => openDrawer({ kind: 'task', id: t.id })}
-      tabIndex={0}
-      onKeyDown={e => e.key === 'Enter' && openDrawer({ kind: 'task', id: t.id })}
+      className={`tcard ${lifted ? 'is-lifted' : ''} ${landed ? 'is-landed' : ''} ${settled ? 'is-settled' : ''}`}
+      data-card={lifted ? undefined : t.id}
+      onPointerDown={onPointerDown}
+      onClick={onOpen}
+      tabIndex={lifted ? -1 : 0}
+      onKeyDown={e => e.key === 'Enter' && onOpen?.()}
     >
       <div className="tcard__tags">
         <ProjectTag p={p} />

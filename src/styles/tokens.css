@@ -59,6 +59,12 @@
   --rim-a: rgb(255 255 255 / 1);
   --rim-b: rgb(255 255 255 / 0.25);
   --sheen: rgb(255 255 255 / 0.34);
+  --rim-mid: rgb(255 255 255 / 0.78);
+  --gel-hi: rgb(255 255 255 / 0.72);
+  --gel-lo: rgb(255 255 255 / 0.34);
+  --gel-rim: #fff;
+  --gel-under: rgb(255 255 255 / 0.5);
+  --gel-edge: rgb(255 255 255 / 0.7);
   --glint: rgb(255 255 255 / 0.36);
   --depth: inset 0 1px 1px rgb(255 255 255 / 0.9), inset 0 -1px 1px rgb(255 255 255 / 0.4),
     inset 0 -12px 24px -18px rgb(20 40 110 / 0.18);
@@ -94,6 +100,12 @@
   --rim-a: rgb(255 255 255 / 0.62);
   --rim-b: rgb(255 255 255 / 0.1);
   --sheen: rgb(255 255 255 / 0.08);
+  --rim-mid: rgb(255 255 255 / 0.45);
+  --gel-hi: rgb(255 255 255 / 0.2);
+  --gel-lo: rgb(255 255 255 / 0.07);
+  --gel-rim: rgb(255 255 255 / 0.4);
+  --gel-under: rgb(255 255 255 / 0.06);
+  --gel-edge: rgb(255 255 255 / 0.16);
   --glint: rgb(255 255 255 / 0.11);
   --depth: inset 0 1px 1px rgb(255 255 255 / 0.28), inset 0 -1px 1px rgb(255 255 255 / 0.08),
     inset 0 -16px 28px -18px rgb(0 0 0 / 0.45);

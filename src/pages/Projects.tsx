@@ -4,7 +4,6 @@ import { CountUp, Ring, Seg, Stack, Stat } from '../components/ui'
 import type { Project, ProjectStatus } from '../data/types'
 import { short, todayIso } from '../lib/date'
 import { daysLeft, projectProgress } from '../lib/metrics'
-import { go } from '../lib/router'
 import { useStore } from '../store'
 import { STATUS_P } from './Home'
 
@@ -12,11 +11,17 @@ export const STATUS_HUE: Record<ProjectStatus, string> = { progress: 'green', re
 
 export function StatusBadge({ s }: { s: ProjectStatus }) {
   return (
-    <span className={`badge-status ${s === 'shipped' ? 'badge-status--shipped' : ''}`} data-hue={STATUS_HUE[s]}>
-      {s === 'shipped' && <Icon name="check" />}
+    <span className={`pstatus pstatus--${s}`}>
+      {s === 'shipped' ? <Icon name="check" /> : <i />}
       {STATUS_P[s]}
     </span>
   )
+}
+
+const STATUS_ORDER: Record<ProjectStatus, number> = { progress: 0, review: 1, planning: 2, shipped: 3 }
+/** Starred first, then by stage, then the soonest due date. */
+export function projectOrder(a: Project, b: Project) {
+  return Number(b.starred) - Number(a.starred) || STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || (a.due < b.due ? -1 : a.due > b.due ? 1 : 0)
 }
 
 type Filter = 'all' | 'active' | 'planning' | 'shipped'
@@ -34,7 +39,7 @@ export function Projects() {
   const dueMonth = ps.filter(p => p.status !== 'shipped' && p.due.startsWith(month)).length
   const list = ps.filter(p =>
     f === 'all' ? true : f === 'active' ? p.status === 'progress' || p.status === 'review' : f === 'planning' ? p.status === 'planning' : p.status === 'shipped',
-  )
+  ).sort(projectOrder)
   return (
     <>
       <header className="page-head">
@@ -53,8 +58,9 @@ export function Projects() {
           <button className="btn btn--primary" onClick={() => openModal({ kind: 'project' })}><Icon name="plus" /> New project</button>
         </div>
       </div>
-      <div className="proj-grid">
+      <div className="pgrid">
         {list.map((p, i) => <ProjectCard key={p.id} p={p} i={i} />)}
+        {list.length === 0 && <p className="empty">No projects here yet.</p>}
       </div>
     </>
   )
@@ -63,40 +69,44 @@ export function Projects() {
 function ProjectCard({ p, i }: { p: Project; i: number }) {
   const { data, person, updateProject } = useStore()
   const pr = projectProgress(data, p.id)
+  const done = p.status === 'shipped'
+  const pct = done ? 1 : pr.pct
   const next = p.milestones.find(m => !m.done)
   const dl = next ? daysLeft(next.due) : 0
+  const members = p.members.map(person)
   return (
-    <article className="pcard glass rise" data-hue={p.hue} style={{ ['--i' as string]: i }} onClick={() => go(`projects/${p.id}`)} tabIndex={0} onKeyDown={e => e.key === 'Enter' && go(`projects/${p.id}`)}>
-      <div className="pcard__head">
-        <span className="pj-icon pj-icon--lg"><Icon name={p.icon} /></span>
-        <div className="pcard__name">
-          <h2>{p.name}</h2>
+    <article className="pcard glass rise" data-hue={p.hue} style={{ ['--i' as string]: i }}>
+      <div className="pcard__top">
+        <span className="picon picon--lg" data-hue={p.hue}><Icon name={p.icon} /></span>
+        <div className="pcard__id">
+          <a className="pcard__link" href={`#/projects/${p.id}`}><h2 className="pcard__name">{p.name}</h2></a>
           <StatusBadge s={p.status} />
         </div>
         <button
-          className={`star ${p.starred ? 'is-on' : ''}`}
-          aria-label={p.starred ? 'Unstar' : 'Star'}
+          className="ibtn ibtn--sm pstar"
+          aria-label={p.starred ? `Unstar ${p.name}` : `Star ${p.name}`}
           aria-pressed={p.starred}
-          onClick={e => { e.stopPropagation(); updateProject(p.id, { starred: !p.starred }) }}
+          onClick={() => updateProject(p.id, { starred: !p.starred })}
         >
-          <Icon name="star" size={18} />
+          <Icon name="star" />
         </button>
       </div>
-      <p className="pcard__desc">{p.desc}</p>
-      <div className="well pcard__ms">
-        <Ring value={p.status === 'shipped' ? 1 : pr.pct} size={60} stroke={6} color="var(--hue)" delay={i * 60}>
-          <b className="num">{Math.round((p.status === 'shipped' ? 1 : pr.pct) * 100)}%</b>
-        </Ring>
-        <div>
+      <p className="pcard__sum">{p.desc}</p>
+      <div className="pcard__mid">
+        <span className="pring">
+          <Ring value={pct} size={64} stroke={7} color="var(--hue)" track="var(--well)" delay={i * 60} />
+          <b className="pring__val">{Math.round(pct * 100)}%</b>
+        </span>
+        <div className="pcard__next">
           <small>{next ? 'Next milestone' : 'Shipped'}</small>
           <b>{next ? next.title : 'Every milestone met'}</b>
           <span>{next ? `${short(next.due)} · ${dl < 0 ? `${-dl} days late` : dl === 0 ? 'today' : `in ${dl} days`}` : short(p.due)}</span>
         </div>
       </div>
       <footer className="pcard__foot">
-        <Stack people={p.members.map(person)} size={28} max={4} />
-        <span>{pr.done}/{pr.total} tasks</span>
-        <span className="pcard__due"><Icon name="calendar" size={16} /> {short(p.due)}</span>
+        <Stack people={members} size={26} max={4} />
+        <span className="pcard__count num">{pr.done}/{pr.total} tasks</span>
+        <span className="pcard__due"><Icon name="calendar" /> {short(p.due)}</span>
       </footer>
     </article>
   )

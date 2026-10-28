@@ -73,6 +73,13 @@ interface Store {
   markAllRead: () => void
   setPrefs: (p: Partial<Data['prefs']>) => void
   resetDemo: () => void
+  // auth (mock)
+  signedIn: boolean
+  lastUser: Person | null
+  signIn: (email: string, password: string, remember: boolean) => AuthResult
+  signInAs: (id: string) => void
+  signUp: (f: { name: string; email: string; password: string; team: Person['team']; role: string }) => AuthResult
+  signOut: () => void
   // ui
   drawer: Drawer
   openDrawer: (d: Drawer) => void
@@ -87,6 +94,26 @@ interface Store {
   pauseFocus: () => void
   stopFocus: () => void
   extendFocus: (min: number) => void
+}
+
+export type AuthResult = { ok: true } | { ok: false; field: 'email' | 'password' | 'name'; error: string }
+
+/* ---- Mock accounts ----
+   Every sample person can sign in with the password below. New sign-ups are
+   kept in localStorage with their password, in plain text: it is a demo. */
+export const DEMO_PASSWORD = 'pane1234'
+const SESSION_KEY = 'pane-demo:session'
+const ACCOUNTS_KEY = 'pane-demo:accounts'
+type Accounts = Record<string, { id: string; password: string }>
+
+function loadAccounts(): Accounts {
+  try { return JSON.parse(localStorage.getItem(ACCOUNTS_KEY) || '{}') } catch { return {} }
+}
+function loadSession(): { id: string; last?: string } | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY) ?? sessionStorage.getItem(SESSION_KEY)
+    return raw ? JSON.parse(raw) : { id: '', last: undefined }
+  } catch { return null }
 }
 
 const Ctx = createContext<Store | null>(null)
@@ -203,7 +230,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setData(d => {
       const col = d.tasks.filter(t => t.status === status && t.id !== id).sort((a, b) => a.order - b.order)
       let order: number
-      if (beforeId) {
+      if (beforeId === 'top') {
+        order = (col[0]?.order ?? 0) - 1
+      } else if (beforeId) {
         const i = col.findIndex(t => t.id === beforeId)
         const prev = col[i - 1]?.order ?? (col[i]?.order ?? 0) - 2
         order = ((prev + (col[i]?.order ?? prev + 2)) / 2)
@@ -225,19 +254,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       before = d.tasks.find(t => t.id === id)
       return {
         ...d,
-        tasks: d.tasks.map(t =>
-          t.id === id
-            ? t.status === 'done'
-              ? { ...t, status: 'todo', doneAt: undefined }
-              : { ...t, status: 'done', doneAt: todayIso() }
-            : t,
-        ),
+        tasks: d.tasks.map(t => {
+          if (t.id !== id) return t
+          // The task lands at the top of the column it moves into.
+          const to: Status = t.status === 'done' ? 'todo' : 'done'
+          const top = Math.min(0, ...d.tasks.filter(x => x.status === to).map(x => x.order)) - 1
+          return to === 'done' ? { ...t, status: to, order: top, doneAt: todayIso() } : { ...t, status: to, order: top, doneAt: undefined }
+        }),
       }
     })
     queueMicrotask(() => {
       if (before && before.status !== 'done') {
         const prev = before
-        notify(`“${prev.title}” done`, 'ok', () => updateTask(prev.id, { status: prev.status, doneAt: undefined }))
+        notify(`Done: ${prev.title}`, 'ok', () => updateTask(prev.id, { status: prev.status, order: prev.order, doneAt: undefined }))
       }
     })
   }, [notify, updateTask])
@@ -296,6 +325,60 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const markAllRead = useCallback(() => setData(d => ({ ...d, notices: d.notices.map(n => ({ ...n, read: true })) })), [])
   const setPrefs = useCallback((p: Partial<Data['prefs']>) => setData(d => ({ ...d, prefs: { ...d.prefs, ...p } })), [])
+  /* ---- auth ---- */
+  const [session, setSession] = useState(loadSession)
+  const saveSession = (sess: { id: string; last?: string }, remember: boolean) => {
+    setSession(sess)
+    try {
+      localStorage.removeItem(SESSION_KEY)
+      sessionStorage.removeItem(SESSION_KEY)
+      ;(remember ? localStorage : sessionStorage).setItem(SESSION_KEY, JSON.stringify(sess))
+    } catch { /* ignore */ }
+  }
+  const startAs = useCallback((id: string, remember = true) => {
+    setData(d => ({ ...d, me: id, people: d.people.map(p => (p.id === id ? { ...p, presence: 'online', note: undefined } : p)) }))
+    saveSession({ id, last: id }, remember)
+  }, [])
+
+  const signIn = useCallback((email: string, password: string, remember: boolean): AuthResult => {
+    const e = email.trim().toLowerCase()
+    if (!/^\S+@\S+\.\S+$/.test(e)) return { ok: false, field: 'email', error: 'Enter a valid email address.' }
+    const person = data.people.find(p => p.email.toLowerCase() === e)
+    const acct = loadAccounts()[e]
+    if (!person) return { ok: false, field: 'email', error: 'No account uses that email.' }
+    if (password !== (acct?.password ?? DEMO_PASSWORD)) return { ok: false, field: 'password', error: 'That password isn’t right.' }
+    startAs(person.id, remember)
+    return { ok: true }
+  }, [data.people, startAs])
+
+  const signInAs = useCallback((id: string) => startAs(id), [startAs])
+
+  const signUp = useCallback((f: { name: string; email: string; password: string; team: Person['team']; role: string }): AuthResult => {
+    const e = f.email.trim().toLowerCase()
+    if (f.name.trim().length < 2) return { ok: false, field: 'name', error: 'Tell us your name.' }
+    if (!/^\S+@\S+\.\S+$/.test(e)) return { ok: false, field: 'email', error: 'Enter a valid email address.' }
+    if (data.people.some(p => p.email.toLowerCase() === e)) return { ok: false, field: 'email', error: 'That email already has an account. Sign in instead.' }
+    if (f.password.length < 8) return { ok: false, field: 'password', error: 'Use at least 8 characters.' }
+    const p: Person = {
+      id: nextId('u'), name: f.name.trim(), email: e, team: f.team, role: f.role.trim() || `${f.team} teammate`,
+      city: 'London', tz: 'Europe/London', presence: 'online', capacity: 32, skin: Math.floor(Math.random() * 6),
+    }
+    setData(d => ({ ...d, people: [...d.people, p], me: p.id }))
+    try { localStorage.setItem(ACCOUNTS_KEY, JSON.stringify({ ...loadAccounts(), [e]: { id: p.id, password: f.password } })) } catch { /* ignore */ }
+    saveSession({ id: p.id, last: p.id }, true)
+    return { ok: true }
+  }, [data.people])
+
+  const signOut = useCallback(() => {
+    setFocus(null)
+    openDrawer(null)
+    openModal(null)
+    saveSession({ id: '', last: session?.last ?? data.me }, true)
+  }, [session?.last, data.me])
+
+  const signedIn = !!session?.id && data.people.some(p => p.id === session.id)
+  const lastUser = data.people.find(p => p.id === (session?.last ?? '')) ?? null
+
   const resetDemo = useCallback(() => {
     setData(buildSeed())
     setFocus(null)
@@ -309,6 +392,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     data, me, look, setLook, person, project,
     addTask, updateTask, moveTask, toggleDone, removeTask,
     addEvent, removeEvent, addProject, updateProject, invite, markAllRead, setPrefs, resetDemo,
+    signedIn, lastUser, signIn, signInAs, signUp, signOut,
     drawer, openDrawer, modal, openModal, finder, setFinder, note, notify,
     focus, startFocus, pauseFocus, stopFocus, extendFocus,
   }

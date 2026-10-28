@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import type { Person, Priority, Project } from '../data/types'
 import { Icon } from './Icon'
 
@@ -24,7 +25,8 @@ export function Face({ id, skin }: { id: string; skin: number }) {
   const hair = HAIR[(h >> 3) % HAIR.length]
   const shirt = SHIRT[(h >> 6) % SHIRT.length]
   const style = (h >> 9) % 4
-  const gid = `g${h.toString(36)}`
+  // Unique per instance: a hidden copy with the same id would blank the gradient.
+  const gid = `g${useId().replace(/:/g, '')}`
   return (
     <svg className="av__face" viewBox="0 0 40 40" aria-hidden="true">
       <defs>
@@ -69,13 +71,15 @@ export function Stack({ people, size = 26, max = 4 }: { people: Person[]; size?:
 /* ---------- Segmented control with a sliding lens ---------- */
 
 export function Seg<T extends string>({
-  value, options, onChange, size, label,
+  value, options, onChange, size, label, block,
 }: {
   value: T
   options: { value: T; label: ReactNode; icon?: string }[]
   onChange: (v: T) => void
   size?: 'sm'
   label?: string
+  /** Stretch to the full width, with equal buttons. */
+  block?: boolean
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [lens, setLens] = useState<{ x: number; w: number } | null>(null)
@@ -94,7 +98,7 @@ export function Seg<T extends string>({
   }, [value, options.length])
 
   return (
-    <div className={`seg ${size ? `seg--${size}` : ''}`} ref={ref} role="group" aria-label={label}>
+    <div className={`seg ${size ? `seg--${size}` : ''} ${block ? 'seg--block' : ''}`} ref={ref} role="group" aria-label={label}>
       {lens && <span className="seg__lens" style={{ width: lens.w, transform: `translateX(${lens.x}px)` }} />}
       {options.map(o => (
         <button key={o.value} type="button" className="seg__btn" aria-pressed={o.value === value} onClick={() => onChange(o.value)}>
@@ -128,17 +132,28 @@ export function Prio({ v, hideLow = false }: { v: Priority; hideLow?: boolean })
 }
 
 export function Check({ on, onToggle, label }: { on: boolean; onToggle: () => void; label: string }) {
+  // Pop only when the box becomes checked, not when an already-checked box mounts.
+  const ref = useRef<HTMLButtonElement>(null)
+  const was = useRef(on)
+  useEffect(() => {
+    if (on && !was.current && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      ref.current?.animate(
+        [{ transform: 'scale(.6)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }],
+        { duration: 600, easing: 'cubic-bezier(.3, 1.9, .5, 1)' },
+      )
+    }
+    was.current = on
+  }, [on])
   return (
     <button
+      ref={ref}
       type="button"
       className="check"
       role="checkbox"
       aria-checked={on}
       aria-label={label}
       onClick={e => { e.stopPropagation(); onToggle() }}
-    >
-      <Icon name="check" />
-    </button>
+    />
   )
 }
 
@@ -239,7 +254,7 @@ export function PageHead({ title, sub, children }: { title: ReactNode; sub?: Rea
 
 /** Fixed-position popover anchored to a button. Closes on outside click / Escape. */
 export function Popover({
-  anchor, onClose, children, align = 'right', className = '', placement = 'below',
+  anchor, onClose, children, align = 'right', className = '', placement = 'below', matchWidth = false,
 }: {
   anchor: HTMLElement | null
   onClose: () => void
@@ -247,6 +262,8 @@ export function Popover({
   align?: 'left' | 'right'
   className?: string
   placement?: 'below' | 'above'
+  /** Make the menu exactly as wide as the button that opened it. */
+  matchWidth?: boolean
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<React.CSSProperties>({ visibility: 'hidden' })
@@ -259,9 +276,10 @@ export function Popover({
     else s.bottom = window.innerHeight - r.top + 8
     if (align === 'right') s.right = Math.max(8, window.innerWidth - r.right)
     else s.left = Math.max(8, r.left)
+    if (matchWidth && r.width >= 200) { s.width = r.width; s.minWidth = 0 }
     ;(s as Record<string, string>)['--origin'] = `${placement === 'below' ? 'top' : 'bottom'} ${align}`
     setPos(s)
-  }, [anchor, align, placement])
+  }, [anchor, align, placement, matchWidth])
 
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
@@ -282,10 +300,13 @@ export function Popover({
     ref.current?.querySelector<HTMLElement>('button, a, input')?.focus({ preventScroll: true })
   }, [])
 
-  return (
+  // Rendered at the top of the page: inside another glass panel the frost
+  // would only see that panel, and the menu would look see-through.
+  return createPortal(
     <div ref={ref} className={`pop glass glass--thick ${className}`} style={pos} role="menu">
       {children}
-    </div>
+    </div>,
+    document.body,
   )
 }
 
