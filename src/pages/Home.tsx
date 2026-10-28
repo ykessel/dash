@@ -189,6 +189,7 @@ function MyTasks() {
   const list = data.tasks
     .filter(t => t.assignee === me.id && ((t.status !== 'done' && t.due <= today) || t.doneAt === today))
     .sort((a, b) => (a.status === 'done' ? 1 : 0) - (b.status === 'done' ? 1 : 0) || sortByDue(a, b))
+    .slice(0, 7)
   return (
     <section className="card glass rise mytasks" style={{ ['--i' as string]: 3 }}>
       <div className="card__head"><div><h2>My tasks</h2><p>Due today and late</p></div><a className="link" href="#/tasks">All tasks</a></div>
@@ -200,7 +201,7 @@ function MyTasks() {
               <b>{t.title}</b>
               <span><ProjectTag p={project(t.project)} /> <small>{t.status === 'done' ? short(t.doneAt!) : relDue(t.due)}</small></span>
             </div>
-            {t.status !== 'done' && <Prio v={t.priority} hideLow />}
+            <Prio v={t.priority} hideLow />
           </li>
         ))}
         {list.length === 0 && <li className="empty">All clear for today ✨</li>}

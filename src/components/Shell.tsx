@@ -41,13 +41,13 @@ function useLens(dep: unknown, axis: 'y' | 'x') {
   return [ref, s] as const
 }
 
-export function AccountMenu({ anchor, onClose, placement = 'below', align = 'right' }: {
-  anchor: HTMLElement | null; onClose: () => void; placement?: 'below' | 'above'; align?: 'left' | 'right'
+export function AccountMenu({ anchor, onClose, placement = 'below', align = 'right', matchWidth = false }: {
+  anchor: HTMLElement | null; onClose: () => void; placement?: 'below' | 'above'; align?: 'left' | 'right'; matchWidth?: boolean
 }) {
   const { look, setLook, resetDemo, openModal } = useStore()
   const pick = (t: Theme) => { setLook({ theme: t }); onClose() }
   return (
-    <Popover anchor={anchor} onClose={onClose} placement={placement} align={align}>
+    <Popover anchor={anchor} onClose={onClose} placement={placement} align={align} matchWidth={matchWidth}>
       <button className="menu__item" onClick={() => { go('settings'); onClose() }}>Settings <Icon name="gear" /></button>
       <button className="menu__item" onClick={() => { openModal({ kind: 'shortcuts' }); onClose() }}>Keyboard shortcuts <Icon name="keyboard" /></button>
       <div className="menu__sep" />
@@ -145,7 +145,7 @@ export function Sidebar({ route }: { route: Route }) {
         <span className="side__me-text"><b>{me.name}</b><small>{me.role}</small></span>
         <Icon name="down" size={18} />
       </button>
-      {menu && <AccountMenu anchor={meRef.current} onClose={() => setMenu(false)} placement="above" align="left" />}
+      {menu && <AccountMenu anchor={meRef.current} onClose={() => setMenu(false)} placement="above" align="left" matchWidth />}
     </aside>
   )
 }

@@ -239,7 +239,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     queueMicrotask(() => {
       if (before && before.status !== 'done') {
         const prev = before
-        notify(`“${prev.title}” done`, 'ok', () => updateTask(prev.id, { status: prev.status, doneAt: undefined }))
+        notify(`Done: ${prev.title}`, 'ok', () => updateTask(prev.id, { status: prev.status, order: prev.order, doneAt: undefined }))
       }
     })
   }, [notify, updateTask])

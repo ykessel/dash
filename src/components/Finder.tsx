@@ -71,7 +71,7 @@ export function Finder() {
     if (!s) return [...pages.slice(0, 4), ...actions.slice(0, 1), actions[3]]
     const has = (t: string) => t.toLowerCase().includes(s)
     const tasks: Item[] = data.tasks.filter(t => has(t.title)).slice(0, 6).map(t => ({
-      id: t.id, group: 'Tasks', title: t.title, sub: `${project(t.project).name} · ${t.status === 'done' ? 'Done' : relDue(t.due)}`, icon: 'tasks',
+      id: t.id, group: 'Tasks', title: t.title, sub: `${project(t.project).name} · ${t.status === 'done' ? 'Done' : relDue(t.due)}`, icon: project(t.project).icon, hue: project(t.project).hue,
       run: () => { go('tasks'); openDrawer({ kind: 'task', id: t.id }) },
     }))
     const projects: Item[] = data.projects.filter(p => has(p.name)).map(p => ({
@@ -126,7 +126,7 @@ export function Finder() {
             const head = it.group !== last ? <li className="finder__group" role="presentation">{it.group}</li> : null
             last = it.group
             return (
-              <FinderRow key={it.id} head={head} it={it} selected={i === sel} onHover={() => setSel(i)} onRun={() => run(it)} />
+              <FinderRow key={it.id} head={head} it={it} q={q} selected={i === sel} onHover={() => setSel(i)} onRun={() => run(it)} />
             )
           })}
         </ul>
@@ -135,19 +135,27 @@ export function Finder() {
   )
 }
 
-function FinderRow({ head, it, selected, onHover, onRun }: { head: React.ReactNode; it: Item; selected: boolean; onHover: () => void; onRun: () => void }) {
+/** Wraps every match of the query in <mark>. */
+function Highlight({ text, q }: { text: string; q: string }) {
+  const s = q.trim()
+  if (!s) return <>{text}</>
+  const parts = text.split(new RegExp(`(${s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'ig'))
+  return <>{parts.map((p, i) => (i % 2 ? <mark key={i}>{p}</mark> : p))}</>
+}
+
+function FinderRow({ head, it, selected, onHover, onRun, q }: { head: React.ReactNode; it: Item; selected: boolean; onHover: () => void; onRun: () => void; q: string }) {
   return (
     <>
       {head}
       <li className="finder__item" role="option" aria-selected={selected} onMouseMove={onHover} onClick={onRun}>
         {it.node ?? (
-          <span className="tile" data-hue={it.hue} style={it.hue ? { background: 'var(--hue)', color: '#fff' } : undefined}>
+          <span className={`tile ${it.hue ? 'pj-icon' : ''}`} data-hue={it.hue}>
             <Icon name={it.icon ?? 'sparkle'} />
           </span>
         )}
-        <span style={{ minWidth: 0 }}>
-          <b>{it.title}</b>
-          <small style={{ display: 'block', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{it.sub}</small>
+        <span>
+          <b><Highlight text={it.title} q={q} /></b>
+          <small>{it.sub}</small>
         </span>
         <Icon name="right" className="go" size={18} />
       </li>

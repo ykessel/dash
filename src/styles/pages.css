@@ -96,6 +96,15 @@
 .task-row__main small { color: var(--text-2); font-size: var(--fs-sm); white-space: nowrap; }
 .task-row.is-done b { text-decoration: line-through; color: var(--text-3); }
 
+/* Home › My tasks: quiet rows, no hover fill; done titles strike through and fade */
+.mytasks .task-row { gap: 12px; padding: 9px 4px; border-radius: 0; }
+.mytasks .task-row:hover { background: none; }
+.mytasks .task-row__main b { font-weight: 560; transition: color 0.25s; }
+.mytasks .task-row__main small { font-size: var(--fs-sm); }
+.mytasks .task-row.is-done b { text-decoration-thickness: 1.5px; }
+.mytasks .task-row:hover .task-row__main b { color: var(--text); }
+.mytasks .task-row.is-done:hover .task-row__main b { color: var(--text-3); }
+
 .week { min-height: 420px; }
 .week__bars { flex: 1; display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; margin-top: 16px; min-height: 220px; }
 .week__col { display: grid; grid-template-rows: 1fr auto; gap: 8px; text-align: center; }
@@ -108,7 +117,7 @@
   border-radius: 14px;
   background: linear-gradient(180deg, color-mix(in srgb, var(--blue) 72%, #fff), color-mix(in srgb, var(--blue) 80%, #123));
   transform-origin: bottom;
-  animation: grow 0.9s var(--spring-soft) both;
+  animation: grow 0.9s var(--spring-soft) backwards;
 }
 .week__col.is-today i { background: linear-gradient(180deg, color-mix(in srgb, var(--blue) 60%, #fff), var(--accent)); box-shadow: 0 8px 20px -8px var(--accent); }
 [data-theme='light'] .week__track i { background: linear-gradient(180deg, color-mix(in srgb, var(--blue) 55%, #fff), color-mix(in srgb, var(--blue) 75%, #fff)); }
@@ -123,7 +132,7 @@
 .proj-rows__name small { font-size: var(--fs-sm); color: var(--text-2); }
 .proj-rows__pct { text-align: right; font-size: var(--fs-md); }
 
-.people-rows li { display: flex; gap: 12px; align-items: center; padding: 8px 4px; cursor: pointer; border-radius: 12px; animation: rise 0.5s var(--ease) both; animation-delay: calc(var(--i) * 40ms); transition: background-color 0.2s; }
+.people-rows li { display: flex; gap: 12px; align-items: center; padding: 8px 4px; cursor: pointer; border-radius: 12px; animation: rise 0.5s var(--ease) backwards; animation-delay: calc(var(--i) * 40ms); transition: background-color 0.2s; }
 .people-rows li:hover { background: var(--fill-hover); }
 .people-rows div { display: grid; min-width: 0; }
 .people-rows b { font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -196,7 +205,7 @@
   border-radius: 18px;
   border: 1.5px dashed color-mix(in srgb, var(--accent-ink) 55%, transparent);
   background: color-mix(in srgb, var(--accent) 8%, transparent);
-  animation: slot-in 0.4s var(--spring) both;
+  animation: slot-in 0.4s var(--spring) backwards;
 }
 @keyframes slot-in { from { opacity: 0; transform: scale(0.94); } }
 
@@ -214,7 +223,7 @@
   -webkit-touch-callout: none;
   touch-action: manipulation;
   transition: background-color 0.3s var(--ease);
-  animation: rise 0.5s var(--ease) both;
+  animation: rise 0.5s var(--ease) backwards;
 }
 /* Two stacked shadows that fade in when the card is lifted: a deep drop shadow and an accent glow. */
 .tcard::before,
@@ -234,7 +243,7 @@
 .tcard.is-lifted { background: var(--glass-solid); cursor: grabbing; animation: none; }
 .tcard.is-lifted::before, .tcard.is-lifted::after { opacity: 1; }
 .tcard.is-settled, .tcard.is-landed { animation: none; }
-.tcard.is-landed .check { animation: check-in 0.75s cubic-bezier(.34, 2.2, .5, 1) both; }
+.tcard.is-landed .check { animation: check-in 0.75s cubic-bezier(.34, 2.2, .5, 1) backwards; }
 .tcard.is-landed .check::after {
   content: '';
   position: absolute;
@@ -272,7 +281,7 @@ html.is-card-dragging, html.is-card-dragging * { cursor: grabbing !important; us
 .lgroup__head { display: flex; align-items: center; gap: 10px; padding: 10px 8px; font-size: var(--fs-lg); font-weight: 650; }
 .lgroup__head .rot { transform: rotate(-90deg); }
 .lgroup__head .ico { transition: transform 0.35s var(--spring); color: var(--text-2); }
-.lrow { display: grid; grid-template-columns: auto minmax(0, 1fr) 190px 120px 90px auto; gap: 14px; align-items: center; padding: 10px 10px; border-top: 1px solid var(--sep); cursor: pointer; border-radius: 10px; animation: rise 0.4s var(--ease) both; }
+.lrow { display: grid; grid-template-columns: auto minmax(0, 1fr) 190px 120px 90px auto; gap: 14px; align-items: center; padding: 10px 10px; border-top: 1px solid var(--sep); cursor: pointer; border-radius: 10px; animation: rise 0.4s var(--ease) backwards; }
 .lrow:hover { background: var(--fill-hover); }
 .lrow b { font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .lrow.is-done b { text-decoration: line-through; color: var(--text-3); }
@@ -310,7 +319,7 @@ html.is-card-dragging, html.is-card-dragging * { cursor: grabbing !important; us
   gap: 3px;
   cursor: pointer;
   transition: background-color 0.2s, transform 0.35s var(--spring), box-shadow 0.2s;
-  animation: rise 0.5s var(--ease) both;
+  animation: rise 0.5s var(--ease) backwards;
 }
 .day:hover { background: var(--fill-2); }
 .day:active { transform: scale(0.97); }
@@ -343,7 +352,7 @@ html.is-card-dragging, html.is-card-dragging * { cursor: grabbing !important; us
 .day-panel { padding: 20px 20px 18px; }
 .day-panel__title { font-family: var(--font-display); font-size: var(--fs-xl) !important; font-weight: 700 !important; }
 .agenda { display: grid; gap: 4px; }
-.agenda__ev { display: grid; grid-template-columns: 76px 1fr; gap: 12px; padding: 8px 8px 10px; border-radius: 14px; cursor: pointer; transition: background-color 0.2s; animation: rise 0.5s var(--ease) both; }
+.agenda__ev { display: grid; grid-template-columns: 76px 1fr; gap: 12px; padding: 8px 8px 10px; border-radius: 14px; cursor: pointer; transition: background-color 0.2s; animation: rise 0.5s var(--ease) backwards; }
 .agenda__ev:hover { background: var(--fill-hover); }
 .agenda__time { display: grid; align-content: start; }
 .agenda__time b { font-size: var(--fs-md); font-weight: 650; font-variant-numeric: tabular-nums; }
@@ -396,7 +405,7 @@ html.is-card-dragging, html.is-card-dragging * { cursor: grabbing !important; us
   border-left: 3px solid var(--hue);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hue) 25%, transparent);
   cursor: pointer;
-  animation: rise 0.45s var(--ease) both;
+  animation: rise 0.45s var(--ease) backwards;
   transition: transform 0.3s var(--spring), box-shadow 0.2s;
   z-index: 1;
 }
@@ -428,9 +437,9 @@ html.is-card-dragging, html.is-card-dragging * { cursor: grabbing !important; us
 .chart__x, .chart__y { font-size: 11.5px; font-weight: 600; fill: var(--text-2); font-family: var(--font); }
 .chart__cursor { stroke: var(--text-3); stroke-dasharray: 3 3; }
 .chart__line { stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw 1.5s var(--ease) forwards; }
-.chart__line--dash { stroke-dasharray: 5 5; stroke-dashoffset: 0; animation: fade 1s 0.3s var(--ease) both; }
-.chart__area { animation: fade 1.2s 0.4s var(--ease) both; }
-.chart__bar { transform-box: fill-box; transform-origin: bottom; animation: grow 0.8s var(--spring-soft) both; transition: opacity 0.2s; }
+.chart__line--dash { stroke-dasharray: 5 5; stroke-dashoffset: 0; animation: fade 1s 0.3s var(--ease) backwards; }
+.chart__area { animation: fade 1.2s 0.4s var(--ease) backwards; }
+.chart__bar { transform-box: fill-box; transform-origin: bottom; animation: grow 0.8s var(--spring-soft) backwards; transition: opacity 0.2s; }
 @keyframes draw { to { stroke-dashoffset: 0; } }
 .legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); margin-bottom: 8px; }
 .legend span { display: inline-flex; align-items: center; gap: 7px; }
@@ -483,7 +492,7 @@ html.is-card-dragging, html.is-card-dragging * { cursor: grabbing !important; us
 .pcard__due { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; }
 
 /* Project detail */
-.pj-icon--xl { width: 64px; height: 64px; border-radius: 20px; margin-top: 8px; animation: rise 0.6s var(--spring) both; }
+.pj-icon--xl { width: 64px; height: 64px; border-radius: 20px; margin-top: 8px; animation: rise 0.6s var(--spring) backwards; }
 .pj-icon--xl .ico { width: 32px; height: 32px; }
 .page-head--with-back h1 { font-size: clamp(32px, 2vw + 14px, 52px); }
 .page-head--with-back p { max-width: 640px; }
@@ -545,14 +554,14 @@ html.is-card-dragging, html.is-card-dragging * { cursor: grabbing !important; us
 .sq { width: 10px; height: 10px; border-radius: 3px; background: var(--hue); }
 .pill-note { height: 26px; padding: 0 10px; display: inline-flex; align-items: center; border-radius: 999px; background: var(--fill-2); font-size: var(--fs-xs); font-weight: 650; color: var(--text-2); white-space: nowrap; }
 .pill-note.is-warn { background: rgb(255 70 80 / 0.16); color: var(--danger); }
-.work-list li { display: grid; grid-template-columns: auto 150px 1fr 82px; gap: 12px; align-items: center; padding: 9px 4px; border-top: 1px solid var(--sep); cursor: pointer; border-radius: 10px; animation: rise 0.5s var(--ease) both; animation-delay: calc(var(--i) * 35ms); }
+.work-list li { display: grid; grid-template-columns: auto 150px 1fr 82px; gap: 12px; align-items: center; padding: 9px 4px; border-top: 1px solid var(--sep); cursor: pointer; border-radius: 10px; animation: rise 0.5s var(--ease) backwards; animation-delay: calc(var(--i) * 35ms); }
 .work-list li:first-child { border: 0; }
 .work-list li:hover { background: var(--fill-hover); }
 .work-list__who { display: grid; min-width: 0; }
 .work-list__who b { font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .work-list__who small { font-size: var(--fs-sm); color: var(--text-2); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .work-list__bar { position: relative; height: 8px; border-radius: 999px; background: var(--fill-2); }
-.work-list__bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: inherit; background: var(--blue); min-width: 4px; animation: grow-x 1s var(--ease) both; transform-origin: left; }
+.work-list__bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: inherit; background: var(--blue); min-width: 4px; animation: grow-x 1s var(--ease) backwards; transform-origin: left; }
 .work-list__bar i.is-over { background: var(--danger); }
 .work-list__bar .cap { position: absolute; top: -5px; bottom: -5px; width: 2.5px; border-radius: 2px; background: var(--text); transform: translateX(-1px); }
 @keyframes grow-x { from { transform: scaleX(0); } }
@@ -561,7 +570,7 @@ html.is-card-dragging, html.is-card-dragging * { cursor: grabbing !important; us
 .huge { font-family: var(--font-display); font-size: 54px; font-weight: 700; letter-spacing: -0.04em; color: var(--text); line-height: 1; }
 .huge i { font-style: normal; font-size: 26px; color: var(--text-2); margin-left: 2px; }
 .ontime-bar { display: flex; gap: 6px; height: 14px; margin-top: 16px; }
-.ontime-bar i { border-radius: 999px; background: var(--green); animation: grow-x 1.1s var(--ease) both; transform-origin: left; }
+.ontime-bar i { border-radius: 999px; background: var(--green); animation: grow-x 1.1s var(--ease) backwards; transform-origin: left; }
 .ontime-bar i.late { background: var(--danger); min-width: 18px; animation-delay: 0.6s; }
 .slow-list li { display: flex; gap: 12px; align-items: center; padding: 10px 4px; border-top: 1px solid var(--sep); cursor: pointer; border-radius: 10px; }
 .slow-list li:first-child { border: 0; }
