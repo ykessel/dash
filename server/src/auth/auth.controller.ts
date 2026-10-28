@@ -73,6 +73,20 @@ export class AuthController {
     return this.respond(res, await this.auth.resetPassword(token, password, { ...metaOf(req), persistent: true }))
   }
 
+  @Post('magic-link')
+  @HttpCode(202)
+  async magicLink(@Body() body: unknown) {
+    await this.auth.sendMagicLink(parseBody(emailDto, body).email)
+  }
+
+  /** POST only: mail scanners that open links with GET must not spend the token. */
+  @Post('magic-link/verify')
+  @HttpCode(200)
+  async verifyMagicLink(@Body() body: unknown, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const s = await this.auth.verifyMagicLink(parseBody(tokenDto, body).token, { ...metaOf(req), persistent: true })
+    return { ...this.respond(res, s), created: s.created }
+  }
+
   @Post('verify-email')
   @HttpCode(204)
   async verifyEmail(@Body() body: unknown) {

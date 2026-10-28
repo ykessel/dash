@@ -4,6 +4,7 @@ import { QueryFailedError } from 'typeorm'
 import type { Env } from '../config/env'
 import { AppError } from '../common/http-exception.filter'
 import { MailService } from '../mail/mail.service'
+import { normalizeEmail } from '../users/email'
 import type { User } from '../users/user.entity'
 import { UsersService } from '../users/users.service'
 import { AuthTokensService, tokenError } from './auth-tokens.service'
@@ -73,6 +74,34 @@ export class AuthService {
     await this.users.markVerified(user.id)
     await this.sessions.revokeAllForUser(user.id)
     return this.sessions.start((await this.users.findById(user.id))!, meta)
+  }
+
+  /** Mails a one-time sign-in link to any address; a new address gets an account when the link is used. */
+  async sendMagicLink(email: string): Promise<void> {
+    const user = await this.users.findByEmail(email)
+    await this.tokens.invalidatePending('magic_link', email)
+    const raw = await this.tokens.issue('magic_link', email, user?.id ?? null)
+    await this.mail.sendMagicLink(normalizeEmail(email), this.link('magic', raw))
+  }
+
+  async verifyMagicLink(token: string, meta: SessionMeta): Promise<Issued & { created: boolean }> {
+    const row = await this.tokens.consume('magic_link', token)
+    let user = await this.users.findByEmail(row.email)
+    let created = false
+    if (!user) {
+      try {
+        user = await this.users.create({ email: row.email, name: row.email.split('@')[0], emailVerified: true })
+        created = true
+      } catch (e) {
+        // Created by a parallel request (another link, OAuth) a moment ago.
+        user = await this.users.findByEmail(row.email)
+        if (!user) throw e
+      }
+    } else if (!user.emailVerifiedAt) {
+      await this.users.markVerified(user.id)
+      user = (await this.users.findById(user.id))!
+    }
+    return { ...(await this.sessions.start(user, meta)), created }
   }
 
   async resendVerification(email: string): Promise<void> {
