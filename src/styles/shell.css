@@ -161,8 +161,6 @@
   animation: rise 0.7s var(--ease) backwards;
 }
 .page-head p { margin-top: 8px; font-size: clamp(14px, 0.3vw + 13px, 17px); line-height: 24px; font-weight: 500; color: var(--text-2); animation: rise 0.7s 0.05s var(--ease) backwards; }
-.page-head--with-back { display: flex; gap: 14px; align-items: flex-start; }
-.page-head--with-back .round-btn { margin-top: 18px; }
 .page-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; margin: 18px 0 23px; }
 .page-bar .stats { animation: rise 0.7s 0.08s var(--ease) backwards; }
 .page-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; animation: rise 0.7s 0.12s var(--ease) backwards; }
@@ -208,7 +206,8 @@
   .page-head h1 { font-size: 34px; }
   .page-head p { font-size: var(--fs-md); }
   .page-bar { margin: 14px 0 16px; }
-  .page-bar .stats { width: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(76px, 1fr)); gap: 8px; }
+  .page-bar .stats { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .page-bar .stats:has(> :nth-child(3):last-child) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .stat { min-width: 0; padding: 10px 12px; }
   .stat small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .stat b { font-size: 21px; }

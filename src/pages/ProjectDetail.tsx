@@ -1,29 +1,39 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { LineChart } from '../components/Charts'
 import { Icon } from '../components/Icon'
 import { PRESENCE_LABEL } from '../components/Overlays'
-import { Avatar, Bar, Check, CountUp, Prio, Stat } from '../components/ui'
-import { addDays, diffDays, iso, parse, relDue, short, todayIso } from '../lib/date'
+import { Avatar, CountUp, Prio, Stack, Stat } from '../components/ui'
+import type { Status, Task } from '../data/types'
+import { addDays, diffDays, fmtTime, iso, parse, relDue, short, todayIso, weekday } from '../lib/date'
 import { daysLeft, projectProgress, sortByDue } from '../lib/metrics'
 import { go } from '../lib/router'
 import { useStore } from '../store'
 import { StatusBadge } from './Projects'
 
+const GROUPS: { s: Status; label: string }[] = [
+  { s: 'todo', label: 'To do' },
+  { s: 'progress', label: 'In progress' },
+  { s: 'review', label: 'In review' },
+  { s: 'done', label: 'Done' },
+]
+const MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const smoothstep = (x: number) => x * x * (3 - 2 * x)
+
 export function ProjectDetail({ id }: { id: string }) {
-  const { data, person, updateProject, openModal, openDrawer, toggleDone, notify } = useStore()
+  const { data, updateProject, openModal, notify } = useStore()
   const p = data.projects.find(x => x.id === id)
 
+  // A plausible history: scope grows early on, work gets done later.
   const burn = useMemo(() => {
     if (!p) return null
     const tasks = data.tasks.filter(t => t.project === p.id)
     const end = todayIso() < p.due ? todayIso() : p.due
     const span = Math.max(1, diffDays(end, p.start))
     const days = Array.from({ length: span + 1 }, (_, i) => iso(addDays(parse(p.start), i)))
-    // Spread finished tasks across the project's life so the curve climbs.
-    const done = tasks.filter(t => t.status === 'done').length
-    const doneSeries = days.map((_, i) => Math.round(done * Math.pow(i / span, 1.4)))
     const total = tasks.length
-    const totalSeries = days.map((_, i) => Math.round(total * (0.6 + 0.4 * Math.min(1, (i / span) * 1.3))))
+    const done = tasks.filter(t => t.status === 'done').length
+    const totalSeries = days.map((_, i) => +(total * smoothstep(Math.min(1, (i / span) * 1.15))).toFixed(1))
+    const doneSeries = days.map((_, i) => Math.min(totalSeries[i], +(done * smoothstep(Math.max(0, (i / span - 0.25) / 0.75))).toFixed(1)))
     return { days, doneSeries, totalSeries, total }
   }, [data.tasks, p])
 
@@ -37,16 +47,13 @@ export function ProjectDetail({ id }: { id: string }) {
   }
 
   const pr = projectProgress(data, p.id)
-  const lead = person(p.lead)
   const dl = daysLeft(p.due)
-  const tasks = data.tasks.filter(t => t.project === p.id).sort((a, b) => (a.status === 'done' ? 1 : 0) - (b.status === 'done' ? 1 : 0) || sortByDue(a, b))
-  const reached = p.milestones.filter(m => m.done).length
 
   return (
     <>
       <header className="page-head page-head--with-back">
-        <button className="round-btn" onClick={() => go('projects')} aria-label="Back to projects"><Icon name="left" size={20} /></button>
-        <span className="pj-icon pj-icon--xl" data-hue={p.hue}><Icon name={p.icon} /></span>
+        <button className="ibtn ibtn--glass head__back" onClick={() => go('projects')} aria-label="Back to projects"><Icon name="left" size={20} /></button>
+        <span className="picon picon--xl head__icon" data-hue={p.hue}><Icon name={p.icon} /></span>
         <div>
           <h1>{p.name}</h1>
           <p>{p.desc}</p>
@@ -57,113 +64,250 @@ export function ProjectDetail({ id }: { id: string }) {
           <Stat label="Progress"><CountUp value={Math.round(pr.pct * 100)} />%</Stat>
           <Stat label="Open tasks"><CountUp value={pr.open} /></Stat>
           <Stat label="Done"><CountUp value={pr.done} /></Stat>
-          <Stat label="Days left"><CountUp value={Math.max(0, dl)} /></Stat>
+          <Stat label={dl < 0 ? 'Days late' : 'Days left'}><CountUp value={Math.abs(dl)} /></Stat>
         </div>
         <div className="page-actions">
-          <button className={`btn btn--glass ${p.pinned ? 'is-pinned' : ''}`} onClick={() => { updateProject(p.id, { pinned: !p.pinned }); notify(p.pinned ? 'Unpinned from the sidebar' : 'Pinned to the sidebar', 'info') }}>
+          <button className="btn btn--glass pstar--btn" aria-pressed={p.pinned} onClick={() => { updateProject(p.id, { pinned: !p.pinned }); notify(p.pinned ? 'Unpinned from the sidebar' : 'Pinned to the sidebar', 'info') }}>
             <Icon name="star" className={p.pinned ? 'star-fill' : ''} /> {p.pinned ? 'Pinned' : 'Pin'}
           </button>
           <button className="btn btn--glass" onClick={() => openModal({ kind: 'event', preset: { project: p.id } })}><Icon name="calplus" /> New event</button>
         </div>
       </div>
 
-      <div className="pd-grid">
-        <div className="pd-col">
-        <section className="card glass rise pd-overview" style={{ ['--i' as string]: 0 }}>
-          <div className="card__head"><h2>Overview</h2></div>
-          <div className="facts">
-            <div className="fact well"><small>Lead</small><b><Avatar p={lead} size={24} /> <a className="link" onClick={() => openDrawer({ kind: 'person', id: lead.id })}>{lead.name}</a></b></div>
-            <div className="fact well"><small>Status</small><b><StatusBadge s={p.status} /></b></div>
-          </div>
-          <div data-hue={p.hue}><Bar value={pr.pct} hue={p.hue} /></div>
-          <div className="pd-dates">
-            <div><small>Started</small><b>{short(p.start)}</b></div>
-            <div style={{ textAlign: 'right' }}><small>Due</small><b>{short(p.due)}</b></div>
-          </div>
-          <div className="section-title" style={{ justifyContent: 'flex-start', gap: 8, marginTop: 18 }}>People <span className="count">{p.members.length}</span></div>
-          <ul className="pd-people">
-            {p.members.map(mid => {
-              const m = person(mid)
-              return (
-                <li key={mid} onClick={() => openDrawer({ kind: 'person', id: m.id })}>
-                  <Avatar p={m} size={34} presence />
-                  <div><b>{m.name}</b><small>{m.id === p.lead ? 'Lead · ' : ''}{PRESENCE_LABEL[m.presence]}</small></div>
-                </li>
-              )
-            })}
-          </ul>
-        </section>
-
-        <section className="card glass rise pd-ms" style={{ ['--i' as string]: 2 }}>
-          <div className="card__head"><div><h2>Milestones</h2><p>{reached} of {p.milestones.length} reached</p></div></div>
-          <ol className="timeline">
-            {p.milestones.map(m => {
-              const d = daysLeft(m.due)
-              return (
-                <li key={m.id} className={m.done ? 'is-done' : ''} data-hue={p.hue}>
-                  <button
-                    className="timeline__dot"
-                    aria-label={m.done ? 'Mark not reached' : 'Mark reached'}
-                    onClick={() => updateProject(p.id, { milestones: p.milestones.map(x => (x.id === m.id ? { ...x, done: !x.done } : x)) })}
-                  >
-                    <Icon name="check" size={13} />
-                  </button>
-                  <div>
-                    <b>{m.title}</b>
-                    <small>{short(m.due)} · {m.done ? 'Done' : d < 0 ? `${-d} days late` : d === 0 ? 'Today' : `in ${d} days`}</small>
-                  </div>
-                </li>
-              )
-            })}
-          </ol>
-        </section>
-
+      <div className="pd" data-hue={p.hue}>
+        <div className="pd__col">
+          <Overview id={p.id} />
+          <Milestones id={p.id} />
+          <ComingUp id={p.id} />
         </div>
-        <div className="pd-col">
-        <section className="card glass rise pd-burn" style={{ ['--i' as string]: 1 }}>
-          <div className="card__head">
-            <div><h2>Burn-up</h2><p>Tasks done against the total, over the project’s life</p></div>
-          </div>
-          <div className="legend">
-            <span><i style={{ background: `var(--${p.hue})` }} /> Done</span>
-            <span><i className="dash" /> Total</span>
-          </div>
-          <LineChart
-            height={230}
-            labels={burn.days.map(short)}
-            yMax={Math.max(10, Math.ceil(burn.total / 10) * 10)}
-            fmtY={v => `${v} tasks`}
-            series={[
-              { name: 'Total', values: burn.totalSeries, color: 'var(--text-3)', dashed: true },
-              { name: 'Done', values: burn.doneSeries, color: `var(--${p.hue})`, area: true },
-            ]}
-            fmtTip={i => <>{burn.doneSeries[i]} of {burn.totalSeries[i]} done<small>{short(burn.days[i])}</small></>}
-            xTicks={6}
-          />
-        </section>
-
-        <section className="card glass rise pd-tasks" style={{ ['--i' as string]: 3 }}>
-          <div className="card__head">
-            <div><h2>Tasks</h2><p>{pr.open} open · {pr.done} done</p></div>
-            <button className="btn btn--primary btn--sm" onClick={() => openModal({ kind: 'task', preset: { project: p.id } })}><Icon name="plus" /> Add task</button>
-          </div>
-          <ul className="task-rows">
-            {tasks.map(t => (
-              <li key={t.id} className={`task-row ${t.status === 'done' ? 'is-done' : ''}`} onClick={() => openDrawer({ kind: 'task', id: t.id })}>
-                <Check on={t.status === 'done'} onToggle={() => toggleDone(t.id)} label={t.title} />
-                <div className="task-row__main">
-                  <b>{t.title}</b>
-                  <span><small>{t.status === 'done' ? `Done ${short(t.doneAt ?? t.due)}` : relDue(t.due)}</small></span>
-                </div>
-                {t.status !== 'done' && <Prio v={t.priority} hideLow />}
-                <Avatar p={person(t.assignee)} size={26} />
-              </li>
-            ))}
-            {tasks.length === 0 && <li className="empty">No tasks yet — add the first one.</li>}
-          </ul>
-        </section>
+        <div className="pd__col">
+          <section className="card glass rise pd-burn" style={{ ['--i' as string]: 1 }}>
+            <div className="card__head">
+              <div><h2>Burn-up</h2><p>Tasks done against the total, over the project’s life</p></div>
+            </div>
+            <div className="burn__legend">
+              <span><i style={{ background: `var(--${p.hue})` }} /> Done</span>
+              <span><i className="burn__dash" /> Total</span>
+            </div>
+            <LineChart
+              height={250}
+              labels={burn.days.map(short)}
+              yMax={Math.max(10, Math.ceil(burn.total / 10) * 10)}
+              fmtY={v => `${v} tasks`}
+              series={[
+                { name: 'Total', values: burn.totalSeries, color: 'var(--text-3)', dashed: true },
+                { name: 'Done', values: burn.doneSeries, color: `var(--${p.hue})`, area: true },
+              ]}
+              fmtTip={i => <>{Math.round(burn.doneSeries[i])} of {Math.round(burn.totalSeries[i])} done<small>{short(burn.days[i])}</small></>}
+              xTicks={6}
+            />
+          </section>
+          <TaskGroups id={p.id} />
         </div>
       </div>
     </>
+  )
+}
+
+/* ---------------- Overview: lead, status, timeline, people ---------------- */
+
+function Overview({ id }: { id: string }) {
+  const { data, person, openDrawer } = useStore()
+  const p = data.projects.find(x => x.id === id)!
+  const lead = person(p.lead)
+  const span = Math.max(1, diffDays(p.due, p.start))
+  const at = (day: string) => Math.max(0, Math.min(1, diffDays(day, p.start) / span))
+  const now = at(todayIso())
+  const nowCls = now < 0.08 ? 'is-start' : now > 0.92 ? 'is-end' : ''
+
+  return (
+    <section className="card glass rise pd-over" style={{ ['--i' as string]: 0 }}>
+      <div className="card__head"><h2>Overview</h2></div>
+      <dl className="tp__meta">
+        <div><dt>Lead</dt><dd><button className="ov__lead" onClick={() => openDrawer({ kind: 'person', id: lead.id })}><Avatar p={lead} size={24} /><span>{lead.name}</span></button></dd></div>
+        <div><dt>Status</dt><dd><StatusBadge s={p.status} /></dd></div>
+      </dl>
+      <div className="tline" aria-label={`${Math.round(now * 100)}% of the project timeline has passed`}>
+        <div className="tline__track">
+          <span className="tline__fill" style={{ transform: `scaleX(${now})` }} />
+          {p.milestones.map(m => (
+            <span key={m.id} className={`tline__ms ${m.done ? 'is-done' : ''}`} style={{ left: `${at(m.due) * 100}%` }} title={`${m.title} · ${short(m.due)}`} />
+          ))}
+          {p.status !== 'shipped' && (
+            <span className={`tline__now ${nowCls}`} style={{ left: `${now * 100}%` }}><em>Today</em></span>
+          )}
+        </div>
+        <div className="tline__ends">
+          <span><small>Started</small>{short(p.start)}</span>
+          <span><small>{p.status === 'shipped' ? 'Shipped' : 'Due'}</small>{short(p.due)}</span>
+        </div>
+      </div>
+      <h3 className="ov__h">People <span className="badge num">{p.members.length}</span></h3>
+      <ul className="ov__people">
+        {p.members.map(mid => {
+          const m = person(mid)
+          return (
+            <li key={mid}>
+              <button className="ov__person" onClick={() => openDrawer({ kind: 'person', id: m.id })}>
+                <Avatar p={m} size={34} presence />
+                <span><b>{m.name}</b><small>{m.id === p.lead ? 'Lead · ' : ''}{PRESENCE_LABEL[m.presence]}</small></span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
+}
+
+/* ---------------- Milestones ---------------- */
+
+function Milestones({ id }: { id: string }) {
+  const { data, updateProject } = useStore()
+  const p = data.projects.find(x => x.id === id)!
+  const reached = p.milestones.filter(m => m.done).length
+  const nextId = p.milestones.find(m => !m.done)?.id
+  return (
+    <section className="card glass rise pd-ms" style={{ ['--i' as string]: 2 }}>
+      <div className="card__head"><div><h2>Milestones</h2><p>{reached} of {p.milestones.length} reached</p></div></div>
+      <ol className="ms">
+        {p.milestones.map(m => {
+          const d = daysLeft(m.due)
+          return (
+            <li key={m.id} className={`ms__item ${m.done ? 'is-done' : ''} ${m.id === nextId ? 'is-next' : ''}`}>
+              <button
+                className="ms__check"
+                aria-label={m.done ? `Mark “${m.title}” not reached` : `Mark “${m.title}” reached`}
+                aria-pressed={m.done}
+                onClick={() => updateProject(p.id, { milestones: p.milestones.map(x => (x.id === m.id ? { ...x, done: !x.done } : x)) })}
+              >
+                <Icon name="check" />
+              </button>
+              <div className="ms__body">
+                <b>{m.title}</b>
+                <small>{short(m.due)} · {m.done ? 'Done' : d < 0 ? `${-d} days late` : d === 0 ? 'Today' : `in ${d} days`}</small>
+              </div>
+              {m.id === nextId && <span className="ms__tag">Next</span>}
+            </li>
+          )
+        })}
+      </ol>
+    </section>
+  )
+}
+
+/* ---------------- Coming up + recent activity ---------------- */
+
+const VERBS = ['finished', 'completed', 'wrapped up', 'shipped']
+
+function ComingUp({ id }: { id: string }) {
+  const { data, person, openDrawer } = useStore()
+  const p = data.projects.find(x => x.id === id)!
+  const today = todayIso()
+  const upcoming = data.events
+    .filter(e => e.project === p.id && e.date >= today)
+    .sort((a, b) => (a.date === b.date ? a.start - b.start : a.date < b.date ? -1 : 1))
+    .slice(0, 4)
+  const recent = data.tasks
+    .filter(t => t.project === p.id && t.status === 'done' && t.doneAt)
+    .sort((a, b) => (a.doneAt! < b.doneAt! ? 1 : -1))
+    .slice(0, 4)
+  const ago = (t: Task, i: number) => {
+    const days = diffDays(today, t.doneAt!)
+    return days === 0 ? `${[24, 2, 3, 5][i] ?? 6}${i === 0 ? ' min' : ' h'} ago` : days === 1 ? 'Yesterday' : `${days} d ago`
+  }
+
+  return (
+    <section className="card glass rise pd-up" style={{ ['--i' as string]: 4 }}>
+      <div className="card__head"><h2>Coming up</h2><a className="btn btn--ghost btn--sm" href="#/calendar">Calendar</a></div>
+      {upcoming.length === 0 ? (
+        <p className="pup__none"><Icon name="calendar" /> Nothing scheduled for this project.</p>
+      ) : (
+        <ul className="pup__events">
+          {upcoming.map(e => {
+            const d = parse(e.date)
+            return (
+              <li key={e.id}>
+                <button className="pev" data-hue={e.hue} onClick={() => openDrawer({ kind: 'event', id: e.id })}>
+                  <span className="pev__date"><small>{MON3[d.getMonth()]}</small><b>{d.getDate()}</b></span>
+                  <span className="pev__body">
+                    <b>{e.title}</b>
+                    <small>{relDue(e.date) === weekday(e.date) ? `${weekday(e.date)}, ${MON3[d.getMonth()]} ${d.getDate()}` : relDue(e.date)} · {fmtTime(e.start)} · {e.where}</small>
+                  </span>
+                  <Stack people={e.people.map(person)} size={24} max={3} />
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      <h3 className="pup__h">Recent activity</h3>
+      {recent.length === 0 ? <p className="pup__none"><Icon name="sparkle" /> No activity yet.</p> : (
+        <ul className="pact">
+          {recent.map((t, i) => {
+            const who = person(t.assignee)
+            return (
+              <li key={t.id}>
+                <Avatar p={who} size={28} />
+                <span>
+                  <span className="pact__text"><b>{who.name.split(' ')[0]}</b> {VERBS[i % VERBS.length]} “{t.title}”</span>
+                  <small>{ago(t, i)}</small>
+                </span>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+/* ---------------- Tasks grouped by status ---------------- */
+
+function TaskGroups({ id }: { id: string }) {
+  const { data, person, openDrawer, openModal } = useStore()
+  const [showDone, setShowDone] = useState(false)
+  const tasks = data.tasks.filter(t => t.project === id)
+  const open = tasks.filter(t => t.status !== 'done').length
+  const today = todayIso()
+  return (
+    <section className="card glass rise pd-tasks" style={{ ['--i' as string]: 3 }}>
+      <div className="card__head">
+        <div><h2>Tasks</h2><p>{open} open · {tasks.length - open} done</p></div>
+        <button className="btn btn--primary btn--sm" onClick={() => openModal({ kind: 'task', preset: { project: id } })}><Icon name="plus" /> Add task</button>
+      </div>
+      <div className="ptasks">
+        {GROUPS.map(g => {
+          const list = tasks.filter(t => t.status === g.s).sort(g.s === 'done' ? (a, b) => ((a.doneAt ?? '') < (b.doneAt ?? '') ? 1 : -1) : sortByDue)
+          const hidden = g.s === 'done' && !showDone
+          return (
+            <div className="pgroup" key={g.s}>
+              <div className="pgroup__head">
+                <span className={`sdot sdot--${g.s}`} />
+                <h3>{g.label}</h3>
+                <span className="badge num">{list.length}</span>
+                {g.s === 'done' && list.length > 0 && (
+                  <button className="btn btn--ghost btn--sm pgroup__more" onClick={() => setShowDone(v => !v)} aria-expanded={showDone}>{showDone ? 'Hide' : 'Show'}</button>
+                )}
+              </div>
+              {list.length === 0 ? <p className="pgroup__none">Nothing here.</p> : !hidden && (
+                <ul className="pgroup__list">
+                  {list.map(t => (
+                    <li key={t.id}>
+                      <button className={`prow ${t.status === 'done' ? 'is-done' : ''}`} onClick={() => openDrawer({ kind: 'task', id: t.id })}>
+                        <span className="prow__title">{t.title}</span>
+                        {t.status !== 'done' ? <Prio v={t.priority} hideLow /> : <span />}
+                        <span className={`prow__due ${t.status !== 'done' && t.due < today ? 'is-late' : ''}`}>{t.status === 'done' ? short(t.doneAt ?? t.due) : relDue(t.due)}</span>
+                        <Avatar p={person(t.assignee)} size={24} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </section>
   )
 }
