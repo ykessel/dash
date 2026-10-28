@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { AuthShowcase } from '../components/AuthShowcase'
 import { BrandMark, Icon } from '../components/Icon'
-import { Avatar, Ring, Seg, Stack } from '../components/ui'
+import { Avatar, Seg } from '../components/ui'
 import type { Team } from '../data/types'
 import { go, type RouteName } from '../lib/router'
 import { DEMO_PASSWORD, useStore, type AuthResult } from '../store'
@@ -11,7 +12,7 @@ import { DEMO_PASSWORD, useStore, type AuthResult } from '../store'
 export function AuthPage({ route }: { route: RouteName }) {
   return (
     <div className="auth">
-      <Showcase />
+      <AuthShowcase />
       <main className="auth__main" id="main">
         {route === 'signup' ? <SignUp /> : route === 'signedout' ? <SignedOut /> : <SignIn />}
       </main>
@@ -317,44 +318,5 @@ function SignedOut() {
       </div>
       <p className="auth-foot">Want a fresh start? <a className="link" href="#/signup">Create an account</a></p>
     </AuthCard>
-  )
-}
-
-/* ---------------- Showcase (wide screens) ---------------- */
-
-function Showcase() {
-  const { data } = useStore()
-  const people = data.people.slice(0, 5)
-  return (
-    <aside className="auth-show" aria-hidden="true">
-      <div className="auth-show__copy">
-        <h2>A team workspace<br />made of glass.</h2>
-        <p>Tasks, calendar, projects, focus and insights for small teams — light, dark and everything in between.</p>
-      </div>
-      <div className="auth-show__stage">
-        <div className="auth-float auth-float--rings glass" style={{ ['--d' as string]: '0s' }}>
-          <small>Today</small>
-          <div className="auth-rings">
-            <Ring value={0.62} size={92} stroke={10} color="var(--ring-tasks)" track="color-mix(in srgb, var(--ring-tasks) 22%, transparent)" />
-            <Ring value={0.8} size={66} stroke={10} color="var(--ring-focus)" track="color-mix(in srgb, var(--ring-focus) 22%, transparent)" delay={120} />
-            <Ring value={0.45} size={40} stroke={10} color="var(--ring-meet)" track="color-mix(in srgb, var(--ring-meet) 22%, transparent)" delay={240} />
-          </div>
-        </div>
-        <div className="auth-float auth-float--task glass" style={{ ['--d' as string]: '-2s' }}>
-          <span className="tag" data-hue="purple"><span>Orbit 2.0 launch</span></span>
-          <b>Launch film final cut</b>
-          <span className="auth-float__foot"><Icon name="calendar" size={15} /> Fri <Stack people={people.slice(0, 3)} size={22} /></span>
-        </div>
-        <div className="auth-float auth-float--island" style={{ ['--d' as string]: '-4s' }}>
-          <span className="auth-island__ring" />
-          <b>Focus</b>
-          <span className="auth-island__time">24:56</span>
-        </div>
-        <div className="auth-float auth-float--team glass" style={{ ['--d' as string]: '-1s' }}>
-          <Stack people={people} size={30} max={5} />
-          <small>{data.people.length} teammates online this week</small>
-        </div>
-      </div>
-    </aside>
   )
 }
