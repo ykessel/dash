@@ -1,5 +1,6 @@
 import type { INestApplication } from '@nestjs/common'
 import { Test, type TestingModuleBuilder } from '@nestjs/testing'
+import { ThrottlerStorage } from '@nestjs/throttler'
 import request from 'supertest'
 import { DataSource } from 'typeorm'
 import { AppModule } from '../../src/app.module'
@@ -44,9 +45,13 @@ export async function resetDb(db: DataSource): Promise<void> {
   await db.query(`TRUNCATE ${rows.map(r => `"${r.tablename}"`).join(', ')} RESTART IDENTITY CASCADE`)
 }
 
-/** Fresh state between tests: empty tables, empty outbox, real time. */
+/** Fresh state between tests: empty tables, empty outbox, real time, no rate-limit counters. */
 export async function resetAll(t: TestApp): Promise<void> {
   await resetDb(t.db)
   t.mailer.clear()
   t.clock.reset()
+  // ThrottlerStorageService keeps counters in `storage` and hit times in `hitExpirations`.
+  const store = t.app.get(ThrottlerStorage, { strict: false }) as unknown as { storage: Map<string, unknown>; hitExpirations: Map<string, unknown> }
+  store.storage.clear()
+  store.hitExpirations.clear()
 }

@@ -1,7 +1,9 @@
 import { Body, Controller, HttpCode, Post, Req, Res } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import { Throttle } from '@nestjs/throttler'
 import type { Request, Response } from 'express'
 import type { Env } from '../config/env'
+import { LOGIN_LIMIT, MAIL_LIMIT, SIGNUP_LIMIT } from '../common/throttle-key'
 import { parseBody } from '../common/validate'
 import { toPublicUser } from '../users/public-user'
 import { AuthService } from './auth.service'
@@ -30,12 +32,14 @@ export class AuthController {
   }
 
   @Post('signup')
+  @Throttle(SIGNUP_LIMIT)
   async signup(@Body() body: unknown, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const input = parseBody(signupDto, body)
     return this.respond(res, await this.auth.signup(input, { ...metaOf(req), persistent: true }))
   }
 
   @Post('login')
+  @Throttle(LOGIN_LIMIT)
   @HttpCode(200)
   async login(@Body() body: unknown, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const { remember, ...input } = parseBody(loginDto, body)
@@ -61,6 +65,7 @@ export class AuthController {
   }
 
   @Post('password/forgot')
+  @Throttle(MAIL_LIMIT)
   @HttpCode(202)
   async forgot(@Body() body: unknown) {
     await this.auth.forgotPassword(parseBody(emailDto, body).email)
@@ -74,6 +79,7 @@ export class AuthController {
   }
 
   @Post('magic-link')
+  @Throttle(MAIL_LIMIT)
   @HttpCode(202)
   async magicLink(@Body() body: unknown) {
     await this.auth.sendMagicLink(parseBody(emailDto, body).email)
@@ -94,6 +100,7 @@ export class AuthController {
   }
 
   @Post('verify-email/resend')
+  @Throttle(MAIL_LIMIT)
   @HttpCode(202)
   async resend(@Body() body: unknown) {
     await this.auth.resendVerification(parseBody(emailDto, body).email)
