@@ -1,10 +1,10 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import type { CalEvent, Hue, Priority, ProjectIcon, Status, Team } from '../data/types'
-import { demoNow, fmtDur, fmtTime, offset, relDue, short, todayIso } from '../lib/date'
+import { demoNow, fmtDur, fmtTime, offset, parse, relDue, short, todayIso, weekday } from '../lib/date'
 import { go } from '../lib/router'
 import { useStore, type Drawer as DrawerState, type Modal as ModalState } from '../store'
 import { Icon } from './Icon'
-import { Avatar, Check, Prio, ProjectTag, Seg, Stack, usePresence } from './ui'
+import { Avatar, Check, Prio, ProjectTag, Ring, Seg, Stack, usePresence } from './ui'
 
 export const STATUS_LABEL: Record<Status, string> = { todo: 'To do', progress: 'In progress', review: 'In review', done: 'Done' }
 
@@ -21,30 +21,45 @@ function useEscape(on: () => void, active: boolean) {
 
 export function ModalHost() {
   const { modal, openModal } = useStore()
-  const [shown, leaving] = usePresence<NonNullable<ModalState>>(modal, 200)
+  const [shown, leaving] = usePresence<NonNullable<ModalState>>(modal, 260)
   const close = () => openModal(null)
   useEscape(close, !!modal)
   if (!shown) return null
   return (
     <>
       <div className={`scrim ${leaving ? 'is-out' : ''}`} onClick={close} />
-      <div className={`modal glass glass--thick ${leaving ? 'is-out' : ''}`} role="dialog" aria-modal="true">
+      <ModalPanel leaving={leaving}>
         {shown.kind === 'task' && <TaskForm preset={shown.preset} onDone={close} />}
         {shown.kind === 'event' && <EventForm preset={shown.preset} onDone={close} />}
         {shown.kind === 'project' && <ProjectForm onDone={close} />}
         {shown.kind === 'invite' && <InviteForm onDone={close} />}
         {shown.kind === 'shortcuts' && <Shortcuts onDone={close} />}
-      </div>
+      </ModalPanel>
     </>
   )
+}
+
+function ModalPanel({ leaving, children }: { leaving: boolean; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useSheetMotion(ref, leaving, 'modal')
+  return (
+    <div ref={ref} className="modal glass glass--thick" role="dialog" aria-modal="true">
+      <span className="grabber" aria-hidden="true" />
+      {children}
+    </div>
+  )
+}
+
+function FormError({ msg }: { msg: string }) {
+  return <p className="mform__err" role="alert">{msg}</p>
 }
 
 function FormHead({ title, onClose, submit = 'Add' }: { title: string; onClose: () => void; submit?: string | null }) {
   return (
     <div className="modal__head">
-      <button type="button" className="round-btn" onClick={onClose} aria-label="Close"><Icon name="close" size={18} /></button>
+      <button type="button" className="ibtn ibtn--glass" onClick={onClose} aria-label="Close"><Icon name="close" size={18} /></button>
       <h2>{title}</h2>
-      {submit ? <button type="submit" className="btn btn--primary btn--sm" style={{ ['--h' as string]: '40px', fontSize: 15 }}>{submit}</button> : <span />}
+      {submit ? <button type="submit" className="btn btn--primary btn--sm">{submit}</button> : <span className="ibtn" aria-hidden="true" />}
     </div>
   )
 }
@@ -77,11 +92,11 @@ function TaskForm({ preset, onDone }: { preset?: Partial<import('../data/types')
     notify(`Added “${t.title}”`, 'ok')
   }
   return (
-    <form onSubmit={submit}>
+    <form className="mform" onSubmit={submit} noValidate>
       <FormHead title="New task" onClose={onDone} />
       <div className="modal__grid">
         <Field label="Title" full>
-          <input className="input" autoFocus value={title} onChange={e => { setTitle(e.target.value); setErr(false) }} placeholder="What needs doing?" aria-invalid={err} style={err ? { boxShadow: 'inset 0 0 0 2px var(--danger)' } : undefined} />
+          <input className="input" autoFocus value={title} onChange={e => { setTitle(e.target.value); setErr(false) }} placeholder="What needs doing?" aria-invalid={err} />
         </Field>
         <Field label="Project">
           <select className="input" value={projectId} onChange={e => setProject(e.target.value)}>
@@ -110,6 +125,7 @@ function TaskForm({ preset, onDone }: { preset?: Partial<import('../data/types')
           <input className="input" type="number" min={0} max={80} value={estimate} onChange={e => setEstimate(Number(e.target.value))} />
         </Field>
       </div>
+      {err && <FormError msg="Title is required." />}
     </form>
   )
 }
@@ -138,11 +154,11 @@ function EventForm({ preset, onDone }: { preset?: Partial<CalEvent>; onDone: () 
     notify(`“${title.trim()}” on ${relDue(date)} at ${fmtTime(h * 60 + m)}`, 'ok')
   }
   return (
-    <form onSubmit={submit}>
+    <form className="mform" onSubmit={submit} noValidate>
       <FormHead title="New event" onClose={onDone} />
       <div className="modal__grid">
         <Field label="Title" full>
-          <input className="input" autoFocus value={title} onChange={e => { setTitle(e.target.value); setErr(false) }} placeholder="What’s happening?" style={err ? { boxShadow: 'inset 0 0 0 2px var(--danger)' } : undefined} />
+          <input className="input" autoFocus value={title} onChange={e => { setTitle(e.target.value); setErr(false) }} placeholder="What’s happening?" />
         </Field>
         <Field label="Date"><input className="input" type="date" value={date} onChange={e => setDate(e.target.value)} /></Field>
         <Field label="Starts"><input className="input" type="time" value={start} step={900} onChange={e => setStart(e.target.value)} /></Field>
@@ -164,6 +180,7 @@ function EventForm({ preset, onDone }: { preset?: Partial<CalEvent>; onDone: () 
           </select>
         </Field>
       </div>
+      {err && <FormError msg="Title is required." />}
     </form>
   )
 }
@@ -188,11 +205,11 @@ function ProjectForm({ onDone }: { onDone: () => void }) {
     go(`projects/${p.id}`)
   }
   return (
-    <form onSubmit={submit}>
+    <form className="mform" onSubmit={submit} noValidate>
       <FormHead title="New project" onClose={onDone} submit="Create" />
       <div className="modal__grid">
         <Field label="Name" full>
-          <input className="input" autoFocus value={name} onChange={e => { setName(e.target.value); setErr(false) }} placeholder="Project name" style={err ? { boxShadow: 'inset 0 0 0 2px var(--danger)' } : undefined} />
+          <input className="input" autoFocus value={name} onChange={e => { setName(e.target.value); setErr(false) }} placeholder="Project name" />
         </Field>
         <Field label="Description" full>
           <textarea className="input" value={desc} onChange={e => setDesc(e.target.value)} placeholder="One line on what this is for" />
@@ -213,6 +230,7 @@ function ProjectForm({ onDone }: { onDone: () => void }) {
         </div>
         <Field label="Due"><input className="input" type="date" value={due} onChange={e => setDue(e.target.value)} /></Field>
       </div>
+      {err && <FormError msg="Name is required." />}
     </form>
   )
 }
@@ -223,19 +241,21 @@ function InviteForm({ onDone }: { onDone: () => void }) {
   const [email, setEmail] = useState('')
   const [team, setTeam] = useState<Team>('Product')
   const [role, setRole] = useState('')
+  const [err, setErr] = useState('')
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    if (!name.trim() || !email.includes('@')) return
+    if (!name.trim()) { setErr('Name is required.'); return }
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) { setErr('Enter a valid email address.'); return }
     invite(name.trim(), email.trim(), team, role.trim() || `${team} teammate`)
     onDone()
     notify(`Invite sent to ${email.trim()}`, 'ok')
   }
   return (
-    <form onSubmit={submit}>
+    <form className="mform" onSubmit={submit} noValidate>
       <FormHead title="Invite to Pane" onClose={onDone} submit="Send" />
       <div className="modal__grid">
-        <Field label="Name"><input className="input" autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="Full name" required /></Field>
-        <Field label="Email"><input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="name@company.com" required /></Field>
+        <Field label="Name"><input className="input" autoFocus value={name} onChange={e => { setName(e.target.value); setErr('') }} placeholder="Full name" /></Field>
+        <Field label="Email"><input className="input" type="email" value={email} onChange={e => { setEmail(e.target.value); setErr('') }} placeholder="name@company.com" /></Field>
         <Field label="Team">
           <select className="input" value={team} onChange={e => setTeam(e.target.value as Team)}>
             {['Product', 'Design', 'Engineering', 'Marketing'].map(t => <option key={t}>{t}</option>)}
@@ -243,6 +263,7 @@ function InviteForm({ onDone }: { onDone: () => void }) {
         </Field>
         <Field label="Role"><input className="input" value={role} onChange={e => setRole(e.target.value)} placeholder="e.g. Designer" /></Field>
       </div>
+      {err && <FormError msg={err} />}
     </form>
   )
 }
@@ -266,20 +287,31 @@ function Shortcuts({ onDone }: { onDone: () => void }) {
 
 export function DrawerHost() {
   const { drawer, openDrawer } = useStore()
-  const [shown, leaving] = usePresence<NonNullable<DrawerState>>(drawer, 240)
+  const [shown, leaving] = usePresence<NonNullable<DrawerState>>(drawer, 260)
   const close = () => openDrawer(null)
   useEscape(close, !!drawer)
   if (!shown) return null
   return (
     <>
       <div className={`scrim ${leaving ? 'is-out' : ''}`} onClick={close} />
-      <aside className={`drawer glass glass--thick ${leaving ? 'is-out' : ''}`} role="dialog" aria-modal="true" key={`${shown.kind}${shown.id}`}>
-        <button className="round-btn drawer__close" onClick={close} aria-label="Close"><Icon name="close" size={18} /></button>
+      <DrawerPanel key={`${shown.kind}${shown.id}`} leaving={leaving} onClose={close}>
         {shown.kind === 'task' && <TaskDetail id={shown.id} onClose={close} />}
         {shown.kind === 'event' && <EventDetail id={shown.id} onClose={close} />}
-        {shown.kind === 'person' && <PersonDetail id={shown.id} />}
-      </aside>
+        {shown.kind === 'person' && <PersonDetail id={shown.id} onClose={close} />}
+      </DrawerPanel>
     </>
+  )
+}
+
+function DrawerPanel({ leaving, onClose, children }: { leaving: boolean; onClose: () => void; children: ReactNode }) {
+  const ref = useRef<HTMLElement>(null)
+  useSheetMotion(ref, leaving, 'drawer')
+  return (
+    <aside ref={ref} className="drawer glass glass--thick" role="dialog" aria-modal="true">
+      <span className="grabber" aria-hidden="true" />
+      <button className="ibtn ibtn--glass drawer__close" onClick={onClose} aria-label="Close"><Icon name="close" size={18} /></button>
+      <div className="drawer__body">{children}</div>
+    </aside>
   )
 }
 
@@ -288,7 +320,7 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const t = data.tasks.find(x => x.id === id)
   const [sub, setSub] = useState('')
   const [msg, setMsg] = useState('')
-  if (!t) return <p className="empty">This task no longer exists.</p>
+  if (!t) return <p className="tp-none">This task no longer exists.</p>
   const p = project(t.project)
   const a = person(t.assignee)
   const doneSubs = t.subtasks.filter(s => s.done).length
@@ -305,67 +337,78 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
     updateTask(t.id, { comments: [...t.comments, { id: `c${Date.now()}`, who: me.id, text: msg.trim(), at: Date.now() }] })
     setMsg('')
   }
+  const toggleSub = (sid: string) => updateTask(t.id, { subtasks: t.subtasks.map(x => (x.id === sid ? { ...x, done: !x.done } : x)) })
 
   return (
     <>
-      <div className="drawer__tags">
+      <div className="tp__top">
         <ProjectTag p={p} onClick={() => { onClose(); go(`projects/${p.id}`) }} />
         <Prio v={t.priority} />
       </div>
-      <h2>{t.title}</h2>
-      <div style={{ marginBottom: 16 }}>
-        <Seg
-          value={t.status}
-          onChange={s => moveTask(t.id, s, 'top')}
-          options={(Object.keys(STATUS_LABEL) as Status[]).map(s => ({ value: s, label: STATUS_LABEL[s] }))}
-          label="Status"
-        />
-      </div>
-      <div className="facts">
-        <div className="fact well"><small>Assignee</small><b><Avatar p={a} size={26} /> {a.name}</b></div>
-        <div className="fact well"><small>Due</small><b><Icon name="calendar" /> {t.status === 'done' ? short(t.doneAt ?? t.due) : relDue(t.due)}</b></div>
-        <div className="fact well"><small>Estimate</small><b><Icon name="clock" /> {t.estimate} h</b></div>
-        <div className="fact well"><small>Project</small><b><a className="link" href={`#/projects/${p.id}`} onClick={onClose}>{p.name}</a></b></div>
-      </div>
+      <h2 className="tp__title">{t.title}</h2>
+      <Seg
+        block
+        value={t.status}
+        onChange={s => moveTask(t.id, s, 'top')}
+        options={(Object.keys(STATUS_LABEL) as Status[]).map(s => ({ value: s, label: STATUS_LABEL[s] }))}
+        label="Status"
+      />
+      <dl className="tp__meta">
+        <div><dt>Assignee</dt><dd><Avatar p={a} size={28} /><span>{a.name}</span></dd></div>
+        <div><dt>Due</dt><dd><Icon name="calendar" /><span>{t.status === 'done' ? short(t.doneAt ?? t.due) : relDue(t.due)}</span></dd></div>
+        <div><dt>Estimate</dt><dd><Icon name="clock" /><span>{t.estimate} h</span></dd></div>
+        <div><dt>Project</dt><dd><a href={`#/projects/${p.id}`} onClick={onClose}><span>{p.name}</span></a></dd></div>
+      </dl>
 
-      <div className="section-title">Subtasks <span className="count">{doneSubs}/{t.subtasks.length}</span></div>
-      {t.subtasks.map(s => (
-        <div className="sub-row" key={s.id}>
-          <Check on={s.done} label={s.title} onToggle={() => updateTask(t.id, { subtasks: t.subtasks.map(x => (x.id === s.id ? { ...x, done: !x.done } : x)) })} />
-          <span className={s.done ? 'done-text' : ''}>{s.title}</span>
-        </div>
-      ))}
-      <form className="input-row" onSubmit={addSub} style={{ margin: '6px 0 18px' }}>
-        <input className="input" value={sub} onChange={e => setSub(e.target.value)} placeholder="Add a subtask" />
-        <button className="btn btn--glass btn--sm" style={{ ['--h' as string]: '40px' }}>Add</button>
-      </form>
+      <section className="tp__block">
+        <header><h3>Subtasks</h3><span className="badge num">{doneSubs}/{t.subtasks.length}</span></header>
+        {t.subtasks.length > 0 && (
+          <ul className="tp__subs">
+            {t.subtasks.map(s => (
+              <li className="tp-sub" key={s.id} onClick={() => toggleSub(s.id)}>
+                <Check on={s.done} label={s.title} onToggle={() => toggleSub(s.id)} />
+                <span className={s.done ? 'is-done' : ''}>{s.title}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <form className="tp__add" onSubmit={addSub}>
+          <input className="input" value={sub} onChange={e => setSub(e.target.value)} placeholder="Add a subtask" aria-label="Add a subtask" />
+          <button className="btn btn--glass btn--sm">Add</button>
+        </form>
+      </section>
 
-      <div className="section-title">Comments</div>
-      {t.comments.map(c => {
-        const w = person(c.who)
-        return (
-          <div className="comment" key={c.id}>
-            <Avatar p={w} size={28} />
-            <div>
-              <b>{w.name.split(' ')[0]}</b><small>{agoShort(c.at)}</small>
-              <p>{c.text}</p>
-            </div>
-          </div>
-        )
-      })}
-      <form className="input-row" onSubmit={addComment}>
-        <input className="input" value={msg} onChange={e => setMsg(e.target.value)} placeholder="Write a comment" />
-        <button className="btn btn--glass btn--sm" style={{ ['--h' as string]: '40px' }}>Post</button>
-      </form>
+      <section className="tp__block">
+        <header><h3>Comments</h3></header>
+        {t.comments.length === 0 ? <p className="tp-none">No comments yet.</p> : (
+          <ul className="tp__comments">
+            {t.comments.map(c => {
+              const w = person(c.who)
+              return (
+                <li className="tp-comment" key={c.id}>
+                  <Avatar p={w} size={28} />
+                  <div>
+                    <b>{w.name.split(' ')[0]}</b> <small>{agoShort(c.at)}</small>
+                    <p>{c.text}</p>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+        <form className="tp__add" onSubmit={addComment}>
+          <input className="input" value={msg} onChange={e => setMsg(e.target.value)} placeholder="Write a comment" aria-label="Write a comment" />
+          <button className="btn btn--glass btn--sm">Post</button>
+        </form>
+      </section>
 
-      <div className="drawer__actions">
+      <footer className="tp__foot">
         <button className="btn btn--glass" onClick={() => { startFocus(undefined, t.title, t.id); onClose() }}><Icon name="moon" /> Focus on this</button>
         <button className="btn btn--primary" onClick={() => toggleDone(t.id)}>
           <Icon name={t.status === 'done' ? 'refresh' : 'check'} /> {t.status === 'done' ? 'Reopen' : 'Mark done'}
         </button>
-        <span className="spacer" />
-        <button className="round-btn" aria-label="Delete task" onClick={() => { removeTask(t.id); onClose() }}><Icon name="trash" size={18} /></button>
-      </div>
+        <button className="ibtn ibtn--glass tp__del" aria-label="Delete task" onClick={() => { removeTask(t.id); onClose() }}><Icon name="trash" size={18} /></button>
+      </footer>
     </>
   )
 }
@@ -382,22 +425,22 @@ const KIND_LABEL: Record<CalEvent['kind'], string> = { meeting: 'Meeting', revie
 function EventDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const { data, person, project, removeEvent, notify } = useStore()
   const e = data.events.find(x => x.id === id)
-  if (!e) return <p className="empty">This event was removed.</p>
+  if (!e) return <p className="tp-none">This event was removed.</p>
   const ppl = e.people.map(person)
   return (
     <>
-      <div className="drawer__tags"><span className="tag tag--plain" data-hue={e.hue}>{KIND_LABEL[e.kind]}</span></div>
-      <h2>{e.title}</h2>
-      <div className="facts">
-        <div className="fact well"><small>When</small><b><Icon name="clock" /> {relDue(e.date)} · {fmtTime(e.start)} – {fmtTime(e.start + e.dur)}</b></div>
-        <div className="fact well"><small>Where</small><b><Icon name={e.where === 'Video call' ? 'video' : 'pin'} /> {e.where}</b></div>
-        <div className="fact well"><small>Project</small><b>{e.project ? <ProjectTag p={project(e.project)} /> : 'None'}</b></div>
-        <div className="fact well"><small>People</small><b><Stack people={ppl} size={26} /> {ppl.length}</b></div>
-      </div>
-      <div className="drawer__actions" style={{ marginTop: 6 }}>
+      <div className="tp__top"><span className="tag tag--plain" data-hue={e.hue}>{KIND_LABEL[e.kind]}</span></div>
+      <h2 className="tp__title">{e.title}</h2>
+      <dl className="tp__meta">
+        <div><dt>When</dt><dd><Icon name="clock" /><span>{relDue(e.date)} · {fmtTime(e.start)} – {fmtTime(e.start + e.dur)}</span></dd></div>
+        <div><dt>Where</dt><dd><Icon name={e.where === 'Video call' ? 'video' : e.kind === 'focus' ? 'moon' : 'pin'} /><span>{e.where}</span></dd></div>
+        <div><dt>Project</dt><dd>{e.project ? <ProjectTag p={project(e.project)} onClick={() => { onClose(); go(`projects/${e.project}`) }} /> : <span>None</span>}</dd></div>
+        <div><dt>People</dt><dd><Stack people={ppl} size={28} /><span>{ppl.length}</span></dd></div>
+      </dl>
+      <footer className="tp__foot">
         {e.where === 'Video call' && <button className="btn btn--primary" onClick={() => notify('Joining the call…', 'info')}><Icon name="video" /> Join call</button>}
         <button className="btn btn--glass" onClick={() => { removeEvent(e.id); onClose() }}><Icon name="trash" /> Remove</button>
-      </div>
+      </footer>
     </>
   )
 }
@@ -425,47 +468,182 @@ export function tzRel(tz: string, mineTz: string) {
 }
 export const PRESENCE_LABEL = { online: 'Online', focus: 'In focus', meeting: 'In a meeting', away: 'Away' } as const
 
-function PersonDetail({ id }: { id: string }) {
+const TEAM_HUE: Record<Team, Hue> = { Product: 'blue', Design: 'pink', Engineering: 'indigo', Marketing: 'orange' }
+
+function PersonDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const { data, person, project, me, openDrawer, notify } = useStore()
   const p = person(id)
-  const tasks = data.tasks.filter(t => t.assignee === p.id && t.status !== 'done')
+  const first = p.name.split(' ')[0]
+  const tasks = data.tasks.filter(t => t.assignee === p.id && t.status !== 'done').sort((x, y) => (x.due < y.due ? -1 : 1))
   const projects = data.projects.filter(x => x.members.includes(p.id))
-  const load = tasks.reduce((s, t) => s + t.estimate, 0)
+  const hours = tasks.reduce((sum, t) => sum + t.estimate, 0)
+  const load = Math.round((hours / p.capacity) * 100)
+  const level = load > 100 ? 'over' : load >= 80 ? 'high' : 'ok'
+  const today = todayIso()
+  const week = data.events
+    .filter(e => e.people.includes(p.id) && e.date >= today && e.date <= offset(6))
+    .sort((x, y) => (x.date === y.date ? x.start - y.start : x.date < y.date ? -1 : 1))
+  // Demo focus hours: my real log, a stable made-up number for everyone else.
+  const focusWeek = p.id === me.id
+    ? data.focus.filter(f => f.date > offset(-7)).reduce((sum, f) => sum + f.minutes, 0) / 60
+    : 1 + ([...p.id].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % 45) / 10
+  const lm = localTimeMin(p.tz, me.tz)
+  const day = lm >= 7 * 60 && lm < 19 * 60
+
   return (
-    <>
-      <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginTop: 8 }}>
-        <Avatar p={p} size={84} presence />
-        <div>
-          <h2 style={{ margin: 0 }}>{p.name}</h2>
-          <p style={{ color: 'var(--text-2)' }}>{p.role} · {p.team}</p>
+    <div className="prof">
+      <header className="prof__hero" data-hue={TEAM_HUE[p.team]}>
+        <Avatar p={p} size={96} presence />
+        <div className="prof__who">
+          <h2 className="prof__name">{p.name}</h2>
+          <p className="prof__role">{p.role}</p>
+          <div className="prof__chips">
+            <span className="tag" data-hue={TEAM_HUE[p.team]}>{p.team}</span>
+            <span className="presence-label"><i className="presence-dot" data-presence={p.presence} /> {PRESENCE_LABEL[p.presence]}</span>
+          </div>
+        </div>
+      </header>
+
+      <dl className="tp__meta">
+        <div><dt>Email</dt><dd><Icon name="mail" /><a href={`mailto:${p.email}`}><span>{p.email}</span></a></dd></div>
+        <div><dt>Local time</dt><dd><Icon name={day ? 'sun' : 'moon'} /><span><b>{localTime(p.tz, me.tz)} · {p.city}</b></span></dd></div>
+      </dl>
+
+      <div className="prof__stats">
+        <div className={`prof__ring mload--${level}`}>
+          <Ring value={Math.min(1, load / 100)} size={92} stroke={9} color="var(--lv)" track="var(--well)" />
+          <span className="prof__ringval"><b className="num">{load}%</b><small>load</small></span>
+        </div>
+        <div className="prof__nums">
+          <div><small>Workload</small><b className="num">{hours}h <span>of {p.capacity}h</span></b></div>
+          <div><small>Focus this week</small><b className="num">{focusWeek.toFixed(1)}h</b></div>
+          <div><small>Open tasks</small><b className="num">{tasks.length}</b></div>
         </div>
       </div>
-      <div className="facts" style={{ marginTop: 20 }}>
-        <div className="fact well"><small>Status</small><b><span className="presence-dot" data-presence={p.presence} /> {PRESENCE_LABEL[p.presence]}</b></div>
-        <div className="fact well"><small>Local time</small><b><Icon name="clock" /> {localTime(p.tz, me.tz)} · {p.city}</b></div>
-        <div className="fact well"><small>Email</small><b><Icon name="mail" /> {p.email}</b></div>
-        <div className="fact well"><small>Workload</small><b>{load}h / {p.capacity}h</b></div>
-      </div>
-      <div className="section-title">Projects</div>
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 18 }}>
-        {projects.length ? projects.map(x => <ProjectTag key={x.id} p={x} />) : <span className="empty" style={{ padding: 0 }}>No projects yet</span>}
-      </div>
-      <div className="section-title">Open tasks <span className="count">{tasks.length}</span></div>
-      <ul className="mini-list">
-        {tasks.slice(0, 8).map(t => (
-          <li key={t.id} onClick={() => openDrawer({ kind: 'task', id: t.id })}>
-            <span>{t.title}</span>
-            <ProjectTag p={project(t.project)} />
-          </li>
-        ))}
-        {tasks.length === 0 && <li className="empty">Nothing open</li>}
-      </ul>
-      {p.id !== me.id && (
-        <div className="drawer__actions">
-          <button className="btn btn--primary" onClick={() => notify(`Message sent to ${p.name.split(' ')[0]}`, 'ok')}><Icon name="comment" /> Message</button>
-          <button className="btn btn--glass" onClick={() => notify(`Calling ${p.name.split(' ')[0]}…`, 'info')}><Icon name="video" /> Call</button>
-        </div>
-      )}
-    </>
+
+      <section className="tp__block">
+        <header><h3>Open tasks</h3><span className="badge num">{tasks.length}</span></header>
+        {tasks.length === 0 ? <p className="prof__none"><Icon name="check" /> Nothing open</p> : (
+          <ul className="prof__list">
+            {tasks.slice(0, 6).map(t => {
+              const pr = project(t.project)
+              return (
+                <li key={t.id}>
+                  <button className="prof__row" onClick={() => openDrawer({ kind: 'task', id: t.id })}>
+                    <span className="picon" data-hue={pr.hue}><Icon name={pr.icon} /></span>
+                    <span className="prof__rowtext">
+                      <b>{t.title}</b>
+                      <small className={t.due < today ? 'is-late' : ''}>{relDue(t.due)} · {pr.name}</small>
+                    </span>
+                    <Prio v={t.priority} hideLow />
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </section>
+
+      <section className="tp__block">
+        <header><h3>This week</h3><span className="badge num">{week.length}</span></header>
+        {week.length === 0 ? <p className="prof__none"><Icon name="calendar" /> Nothing scheduled</p> : (
+          <ul className="prof__list">
+            {week.slice(0, 5).map(e => (
+              <li key={e.id}>
+                <button className="prof__row" onClick={() => openDrawer({ kind: 'event', id: e.id })}>
+                  <span className="prof__day" data-hue={e.hue}><small>{weekday(e.date)}</small><b>{parse(e.date).getDate()}</b></span>
+                  <span className="prof__rowtext">
+                    <b>{e.title}</b>
+                    <small>{relDue(e.date)} · {fmtTime(e.start)}</small>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="tp__block">
+        <header><h3>Projects</h3><span className="badge num">{projects.length}</span></header>
+        {projects.length === 0 ? <p className="prof__none"><Icon name="folder" /> No projects yet</p> : (
+          <ul className="prof__list">
+            {projects.map(x => (
+              <li key={x.id}>
+                <button className="prof__row" onClick={() => { onClose(); go(`projects/${x.id}`) }}>
+                  <span className="picon" data-hue={x.hue}><Icon name={x.icon} /></span>
+                  <span className="prof__rowtext"><b>{x.name}</b><small>{x.lead === p.id ? 'Lead' : 'Member'}</small></span>
+                  <Icon name="right" size={18} className="prof__chev" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <footer className="tp__foot">
+        {p.id !== me.id ? (
+          <>
+            <button className="btn btn--primary" onClick={() => notify(`Message sent to ${first}`, 'ok')}><Icon name="comment" /> Message {first}</button>
+            <a className="btn btn--glass" href={`mailto:${p.email}`}><Icon name="mail" /> Email</a>
+          </>
+        ) : (
+          <button className="btn btn--glass" onClick={() => { onClose(); go('settings') }}><Icon name="gear" /> Edit profile</button>
+        )}
+      </footer>
+    </div>
   )
+}
+
+/* ======================= Motion ======================= */
+
+const EXPO_OUT = 'cubic-bezier(.16, 1, .3, 1)'
+const POWER3_OUT = 'cubic-bezier(.215, .61, .355, 1)'
+const POWER2_IN = 'cubic-bezier(.55, .085, .68, .53)'
+
+/** A clip-path inset that hides `t` of the element around its centre (t=0 shows it all, grown by `n`px). */
+function clipInset(el: HTMLElement, t: number, n = 0) {
+  const w = el.offsetWidth
+  const h = el.offsetHeight
+  const r = parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0
+  const x = (w / 2) * t - n
+  const y = (h / 2) * t - n
+  return `inset(${y}px ${x}px ${y}px ${x}px round ${Math.max(0, Math.min(r + n, Math.min(w, h) / 2))}px)`
+}
+
+/**
+ * Opening: the sheet unfolds from its centre (clip-path) while it slides in
+ * and settles from 97% scale; then its contents rise in one after another.
+ * Closing: it folds back towards the centre and slides away.
+ */
+function useSheetMotion(ref: React.RefObject<HTMLElement | null>, leaving: boolean, kind: 'modal' | 'drawer') {
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const phone = matchMedia('(max-width: 760px)').matches
+    const from = phone ? 'translateY(120px)' : kind === 'drawer' ? 'translateX(70px)' : 'translateY(30px)'
+    el.animate(
+      [{ transform: `${from} scale(.97)`, clipPath: clipInset(el, 0.5) }, { transform: 'none', clipPath: clipInset(el, 0, 60) }],
+      { duration: 850, easing: EXPO_OUT },
+    )
+    const kids = kind === 'drawer'
+      ? el.querySelectorAll<HTMLElement>('.drawer__body > *, .prof > *')
+      : el.querySelectorAll<HTMLElement>('.field, .shortcuts li')
+    const [y, stagger, delay] = kind === 'drawer' ? [14, 50, 80] : [10, 35, 100]
+    Array.from(kids).filter(k => !k.classList.contains('prof')).forEach((k, i) => {
+      k.animate([{ opacity: 0, transform: `translateY(${y}px)` }, { opacity: 1, transform: 'none' }], {
+        duration: 550, easing: POWER3_OUT, delay: delay + i * stagger, fill: 'backwards',
+      })
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const el = ref.current
+    if (!leaving || !el || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const phone = matchMedia('(max-width: 760px)').matches
+    const to = phone ? 'translateY(80px)' : kind === 'drawer' ? 'translateX(48px)' : 'translateY(16px)'
+    el.animate(
+      [{ transform: 'none', clipPath: clipInset(el, 0, 60), opacity: 1 }, { transform: `${to} scale(.97)`, clipPath: clipInset(el, 0.1), opacity: 0 }],
+      { duration: 240, easing: POWER2_IN, fill: 'forwards' },
+    )
+  }, [leaving]) // eslint-disable-line react-hooks/exhaustive-deps
 }

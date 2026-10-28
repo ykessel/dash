@@ -70,13 +70,15 @@ export function Stack({ people, size = 26, max = 4 }: { people: Person[]; size?:
 /* ---------- Segmented control with a sliding lens ---------- */
 
 export function Seg<T extends string>({
-  value, options, onChange, size, label,
+  value, options, onChange, size, label, block,
 }: {
   value: T
   options: { value: T; label: ReactNode; icon?: string }[]
   onChange: (v: T) => void
   size?: 'sm'
   label?: string
+  /** Stretch to the full width, with equal buttons. */
+  block?: boolean
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [lens, setLens] = useState<{ x: number; w: number } | null>(null)
@@ -95,7 +97,7 @@ export function Seg<T extends string>({
   }, [value, options.length])
 
   return (
-    <div className={`seg ${size ? `seg--${size}` : ''}`} ref={ref} role="group" aria-label={label}>
+    <div className={`seg ${size ? `seg--${size}` : ''} ${block ? 'seg--block' : ''}`} ref={ref} role="group" aria-label={label}>
       {lens && <span className="seg__lens" style={{ width: lens.w, transform: `translateX(${lens.x}px)` }} />}
       {options.map(o => (
         <button key={o.value} type="button" className="seg__btn" aria-pressed={o.value === value} onClick={() => onChange(o.value)}>

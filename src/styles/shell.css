@@ -209,8 +209,8 @@
   .page-head p { font-size: var(--fs-md); }
   .page-bar { margin: 14px 0 16px; }
   .page-bar .stats { width: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(76px, 1fr)); gap: 8px; }
-  .stat { min-width: 0; padding: 9px 12px 8px; }
-  .stat small { font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stat { min-width: 0; padding: 10px 12px; }
+  .stat small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .stat b { font-size: 21px; }
   .stat .delta { display: none; }
   .page-actions { width: 100%; }
