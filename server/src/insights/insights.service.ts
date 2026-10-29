@@ -50,15 +50,16 @@ export class InsightsService {
   async series(wsId: string, w: Window): Promise<{ throughput: Series; focus: Series }> {
     const from = w.prevDays[0]
     const params = [wsId, w.tz, from, w.today]
-    // A live task counts once on each local day it entered done.
+    // A live task counts once per period, on the last local day it entered done (as onTime and byProject do).
     const finished: { day: string; n: number }[] = await this.ds.query(
       `${DAYS}, done AS (
-         SELECT DISTINCT a.task_id, (a.at AT TIME ZONE $2)::date AS day
+         SELECT a.task_id, max((a.at AT TIME ZONE $2)::date) AS day
          FROM task_activity a JOIN tasks t ON t.id = a.task_id AND t.deleted_at IS NULL
-         WHERE a.workspace_id = $1 AND a.kind = 'status' AND a.to_status = 'done' AND ${IN_RANGE('a.at')})
+         WHERE a.workspace_id = $1 AND ${ENTERED_DONE} AND ${IN_RANGE('a.at')}
+         GROUP BY a.task_id, (a.at AT TIME ZONE $2)::date >= $5::date)
        SELECT to_char(days.day, 'YYYY-MM-DD') AS day, count(done.task_id)::int AS n
        FROM days LEFT JOIN done ON done.day = days.day GROUP BY days.day ORDER BY days.day`,
-      params,
+      [...params, w.days[0]],
     )
     const focused: { day: string; n: number }[] = await this.ds.query(
       `${DAYS}, f AS (
@@ -102,7 +103,7 @@ export class InsightsService {
     const cycle = (params: unknown[]) => this.ds.query(
       `${FINISHED}
        SELECT round(avg(extract(epoch FROM fin.first_done - c.at) / 86400)::numeric, 1)::float8 AS avg
-       FROM fin JOIN task_activity c ON c.task_id = fin.task_id AND c.kind = 'created'`,
+       FROM fin JOIN task_activity c ON c.task_id = fin.task_id AND c.workspace_id = $1 AND c.kind = 'created'`,
       params,
     ).then((r: { avg: number | null }[]) => r[0].avg)
     const [avgDays, previousAvgDays] = await Promise.all([
@@ -119,7 +120,7 @@ export class InsightsService {
   /** Today's state, whatever the range: open hours per member and the open tasks quiet the longest. */
   async load(wsId: string, w: Window): Promise<{ workload: Workload[]; stale: Stale[] }> {
     const workload: Workload[] = await this.ds.query(
-      `SELECT m.user_id AS person, coalesce(sum(t.estimate), 0)::float8 AS "openHours", m.capacity
+      `SELECT m.user_id AS person, round(coalesce(sum(t.estimate), 0)::numeric, 1)::float8 AS "openHours", m.capacity
        FROM memberships m
        LEFT JOIN tasks t ON t.assignee_id = m.user_id AND t.workspace_id = m.workspace_id
          AND t.deleted_at IS NULL AND t.status <> 'done'
@@ -130,7 +131,7 @@ export class InsightsService {
     )
     const stale: Stale[] = await this.ds.query(
       `SELECT t.id AS task, ($3::date - (max(a.at) AT TIME ZONE $2)::date)::int AS days
-       FROM tasks t JOIN task_activity a ON a.task_id = t.id
+       FROM tasks t JOIN task_activity a ON a.task_id = t.id AND a.workspace_id = $1
        WHERE t.workspace_id = $1 AND t.deleted_at IS NULL AND t.status <> 'done'
        GROUP BY t.id ORDER BY days DESC, t.id LIMIT 3`,
       [wsId, w.tz, w.today],
@@ -138,6 +139,9 @@ export class InsightsService {
     return { workload, stale }
   }
 }
+
+/** A task enters done by moving there or by being created there. */
+const ENTERED_DONE = `a.kind IN ('status', 'created') AND a.to_status = 'done'`
 
 /** Every local day from $3 to $4 (params: wsId, tz, from, to). */
 const DAYS = `WITH days AS (SELECT d::date AS day FROM generate_series($3::date, $4::date, interval '1 day') AS d)`
@@ -153,5 +157,5 @@ const IN_RANGE = (col: string) =>
 const FINISHED = `WITH fin AS (
   SELECT a.task_id, max((a.at AT TIME ZONE $2)::date) AS day, min(a.at) AS first_done
   FROM task_activity a JOIN tasks t ON t.id = a.task_id AND t.deleted_at IS NULL
-  WHERE a.workspace_id = $1 AND a.kind = 'status' AND a.to_status = 'done' AND ${IN_RANGE('a.at')}
+  WHERE a.workspace_id = $1 AND ${ENTERED_DONE} AND ${IN_RANGE('a.at')}
   GROUP BY a.task_id)`

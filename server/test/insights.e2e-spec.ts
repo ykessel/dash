@@ -195,6 +195,38 @@ describe('insights', () => {
     })
   })
 
+  describe('review fixes', () => {
+    it('a task created straight into done counts as finished today', async () => {
+      await task('born done', { status: 'done', due: dayAgo(0) })
+      const r = await insights('7d')
+      expect(r.throughput.current[6]).toBe(1)
+      expect(r.onTime).toEqual({ total: 1, late: 0, rate: 100 })
+      expect(r.byProject).toEqual([{ project: projectId, finished: 1 }])
+      expect(r.cycle.avgDays).toBe(0)
+    })
+
+    it('a task closed on two days of the window counts once, on the last day, matching byProject', async () => {
+      const a = await task('a')
+      await finishedAt(t, a.id, lin.user.id, daysAgo(1))
+      await finishedAt(t, a.id, lin.user.id, daysAgo(0))
+      const r = await insights('7d')
+      expect(r.throughput.current).toEqual([0, 0, 0, 0, 0, 0, 1])
+      expect(r.throughput.total).toBe(1)
+      expect(r.byProject).toEqual([{ project: projectId, finished: 1 }])
+    })
+
+    it('task_activity is indexed by task so cycle and stale lookups do not scan the table', async () => {
+      const rows = await t.db.query(`SELECT indexdef FROM pg_indexes WHERE tablename = 'task_activity'`)
+      expect(rows.map((r: { indexdef: string }) => r.indexdef).join('\n')).toMatch(/\(task_id, at\)/)
+    })
+
+    it('open hours are rounded to one decimal', async () => {
+      await task('x', { assignee: nia.user.id, estimate: 0.1 })
+      await task('y', { assignee: nia.user.id, estimate: 0.2 })
+      expect((await insights()).workload).toEqual(expect.arrayContaining([{ person: nia.user.id, openHours: 0.3, capacity: 32 }]))
+    })
+  })
+
   describe('CSV export', () => {
     it('downloads date, finished, previous_period and focus_hours for each day of the window', async () => {
       const a = await task('a')
