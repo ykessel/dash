@@ -31,6 +31,7 @@ const routes: [Method, (ws: string, ctx: { otherId: string }) => string][] = [
   ['patch', ws => `/api/v1/workspaces/${ws}/tasks/${ANY}`],
   ['delete', ws => `/api/v1/workspaces/${ws}/tasks/${ANY}`],
   ['post', ws => `/api/v1/workspaces/${ws}/tasks/${ANY}/restore`],
+  ['post', ws => `/api/v1/workspaces/${ws}/tasks/${ANY}/move`],
 ]
 
 describe('tenant isolation', () => {

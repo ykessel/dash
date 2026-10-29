@@ -10,6 +10,7 @@ import { AppError } from '../common/http-exception.filter'
 import { assertVersion } from '../common/version'
 import { WorkspaceRefs } from '../workspaces/refs.service'
 import { UUID } from '../workspaces/workspace-member.guard'
+import { placeOrder } from './order'
 import { type ActivityKind, Subtask, Task, TaskActivity, TaskComment } from './task.entity'
 import { type TaskView, toTaskView } from './task-view'
 
@@ -139,6 +140,42 @@ export class TasksService {
       await this.recordActivity(task, actor.userId, 'restored', undefined, undefined, em)
     })
     return this.publish('task.restored', wsId, id, actor)
+  }
+
+  /**
+   * Drag and drop: `beforeId` is the card it lands above, `'top'`, or `null`/missing for the end.
+   * Needs no `version` (a drop always wins) but bumps it.
+   */
+  async move(wsId: string, id: string, input: { status: Status; beforeId?: string | null }, actor: Actor): Promise<TaskView> {
+    const task = await this.find(wsId, id)
+    const { status, beforeId } = input
+    await this.ds.transaction(async em => {
+      // Locking the target column serializes concurrent drops into it.
+      const rows: { id: string; order: number }[] = await em.query(
+        `SELECT id, "order" FROM tasks WHERE workspace_id = $1 AND status = $2 AND deleted_at IS NULL AND id <> $3
+         ORDER BY "order", id FOR UPDATE`,
+        [wsId, status, id],
+      )
+      let at: number | 'top' | 'end' = 'end'
+      if (beforeId === 'top') at = 'top'
+      else if (beforeId) {
+        at = rows.findIndex(r => r.id === beforeId)
+        if (at < 0) throw new AppError(400, 'invalid', 'Drop it next to a card in that column.', 'beforeId')
+      }
+      let order = placeOrder(rows.map(r => r.order), at)
+      if (order === null) {
+        await em.query(
+          `UPDATE tasks SET "order" = n.i - 1 FROM unnest($1::uuid[]) WITH ORDINALITY AS n(id, i) WHERE tasks.id = n.id`,
+          [rows.map(r => r.id)],
+        )
+        order = placeOrder(rows.map((_, i) => i), at) as number
+      }
+      const moved = status !== task.status
+      const set: Partial<Task> = moved ? { ...(await this.columnChange(wsId, task, status, em)), order } : { order }
+      await em.update(Task, { id }, { ...set, version: () => 'version + 1' })
+      if (moved) await this.recordActivity(task, actor.userId, 'status', task.status, status, em)
+    })
+    return this.publish('task.moved', wsId, id, actor)
   }
 
   /** Top of a column: one above the lowest `order`, or 0 for an empty column. */

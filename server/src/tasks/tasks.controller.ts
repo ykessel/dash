@@ -33,6 +33,10 @@ const PatchBody = z.object({
   due: due.optional(),
   estimate: estimate.optional(),
 })
+const MoveBody = z.object({
+  status: z.enum(STATUSES),
+  beforeId: z.string().nullable().optional(),
+})
 const ListQuery = z.object({
   project: z.string().optional(),
   assignee: z.string().optional(),
@@ -69,6 +73,12 @@ export class TasksController {
   @HttpCode(204)
   remove(@Param('wsId') wsId: string, @Param('id') id: string, @Actor() actor: Actor) {
     return this.tasks.remove(wsId, id, actor)
+  }
+
+  @Post(':id/move')
+  @HttpCode(200)
+  move(@Param('wsId') wsId: string, @Param('id') id: string, @Actor() actor: Actor, @Body() body: unknown) {
+    return this.tasks.move(wsId, id, parseBody(MoveBody, body), actor)
   }
 
   @Post(':id/restore')
