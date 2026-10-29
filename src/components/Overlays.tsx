@@ -539,7 +539,7 @@ function PersonDetail({ id, onClose }: { id: string; onClose: () => void }) {
                     <span className="picon" data-hue={pr.hue}><Icon name={pr.icon} /></span>
                     <span className="prof__rowtext">
                       <b>{t.title}</b>
-                      <small className={t.due < today ? 'is-late' : ''}>{relDue(t.due)} · {pr.name}</small>
+                      <small className={(!!t.due && t.due < today) ? 'is-late' : ''}>{relDue(t.due)} · {pr.name}</small>
                     </span>
                     <Prio v={t.priority} hideLow />
                   </button>

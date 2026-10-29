@@ -26,7 +26,7 @@ export function Tasks() {
   const open = data.tasks.filter(t => t.status !== 'done')
   const projectsWithOpen = new Set(open.map(t => t.project)).size
   const dueWeek = open.filter(t => diffDays(t.due, today) <= 7 && diffDays(t.due, today) >= 0).length
-  const overdue = open.filter(t => t.due < today).length
+  const overdue = open.filter(t => (!!t.due && t.due < today)).length
   const doneWeek = data.tasks.filter(t => t.status === 'done' && t.doneAt && diffDays(today, t.doneAt) < 7).length
 
   const filtered = useMemo(() => {
@@ -480,7 +480,7 @@ function Card({ t, landed, settled, lifted, onPointerDown, onOpen }: {
   const subs = t.subtasks.length
   const doneSubs = t.subtasks.filter(s => s.done).length
   const done = t.status === 'done'
-  const isToday = !done && t.due <= todayIso()
+  const isToday = !done && (!!t.due && t.due <= todayIso())
   return (
     <article
       className={`tcard ${lifted ? 'is-lifted' : ''} ${landed ? 'is-landed' : ''} ${settled ? 'is-settled' : ''}`}
@@ -545,7 +545,7 @@ function List({ tasks }: { tasks: Task[] }) {
                     <Check on={t.status === 'done'} onToggle={() => toggleDone(t.id)} label={t.title} />
                     <b>{t.title}</b>
                     <span className="lrow__proj"><ProjectTag p={project(t.project)} /></span>
-                    <span className={`lrow__due ${t.status !== 'done' && t.due <= todayIso() ? 'is-today' : ''}`}><Icon name="calendar" size={15} /> {t.status === 'done' ? short(t.doneAt ?? t.due) : relDue(t.due)}</span>
+                    <span className={`lrow__due ${t.status !== 'done' && (!!t.due && t.due <= todayIso()) ? 'is-today' : ''}`}><Icon name="calendar" size={15} /> {t.status === 'done' ? short(t.doneAt ?? t.due) : relDue(t.due)}</span>
                     <span className="lrow__prio"><Prio v={t.priority} /></span>
                     <Avatar p={person(t.assignee)} size={28} />
                   </li>

@@ -267,7 +267,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => { live = false; off() }
   }, [enter, leave])
 
-  // Live updates for the open workspace; a reconnect re-reads the snapshot to catch what was missed.
+  // Live updates for the open workspace; every (re)connect re-reads the snapshot to catch what was missed.
   useEffect(() => {
     if (!user || !workspaceId) return
     return connectLive(
