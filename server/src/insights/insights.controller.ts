@@ -14,7 +14,7 @@ export class InsightsController {
   async get(@Param('wsId') wsId: string, @Actor() actor: Actor, @Query('range') range: unknown) {
     const n = parseRange(range)
     const w = await this.insights.window(wsId, actor.userId, n)
-    const series = await this.insights.series(wsId, w)
-    return { range: n, days: w.days, ...series }
+    const [series, finished] = await Promise.all([this.insights.series(wsId, w), this.insights.finished(wsId, w)])
+    return { range: n, days: w.days, ...series, ...finished }
   }
 }

@@ -18,6 +18,10 @@ export interface Series {
   previousTotal: number
 }
 
+export interface OnTime { total: number; late: number; rate: number | null }
+export interface Cycle { avgDays: number | null; previousAvgDays: number | null }
+export interface ProjectShare { project: string; finished: number }
+
 /** Hours to one decimal, from whole seconds (integer maths, so 0.25 h rounds to 0.3). */
 const hours = (sec: number) => Math.round(sec / 360) / 10
 const sum = (xs: number[]) => xs.reduce((s, x) => s + x, 0)
@@ -76,6 +80,39 @@ export class InsightsService {
       },
     }
   }
+
+  /** On-time rate and project share for the window; cycle time for the window and the period before. */
+  async finished(wsId: string, w: Window): Promise<{ onTime: OnTime; cycle: Cycle; byProject: ProjectShare[] }> {
+    const cur = [wsId, w.tz, w.days[0], w.today]
+    const [on] = await this.ds.query(
+      `${FINISHED}
+       SELECT count(*)::int AS total, count(*) FILTER (WHERE fin.day > t.due_date)::int AS late
+       FROM fin JOIN tasks t ON t.id = fin.task_id WHERE t.due_date IS NOT NULL`,
+      cur,
+    )
+    const byProject: ProjectShare[] = await this.ds.query(
+      `${FINISHED}
+       SELECT t.project_id AS project, count(*)::int AS finished
+       FROM fin JOIN tasks t ON t.id = fin.task_id JOIN projects p ON p.id = t.project_id AND p.deleted_at IS NULL
+       GROUP BY t.project_id ORDER BY finished DESC, t.project_id`,
+      cur,
+    )
+    const cycle = (params: unknown[]) => this.ds.query(
+      `${FINISHED}
+       SELECT round(avg(extract(epoch FROM fin.first_done - c.at) / 86400)::numeric, 1)::float8 AS avg
+       FROM fin JOIN task_activity c ON c.task_id = fin.task_id AND c.kind = 'created'`,
+      params,
+    ).then((r: { avg: number | null }[]) => r[0].avg)
+    const [avgDays, previousAvgDays] = await Promise.all([
+      cycle(cur),
+      cycle([wsId, w.tz, w.prevDays[0], w.prevDays[w.prevDays.length - 1]]),
+    ])
+    return {
+      onTime: { total: on.total, late: on.late, rate: on.total ? Math.round(((on.total - on.late) / on.total) * 100) : null },
+      cycle: { avgDays, previousAvgDays },
+      byProject,
+    }
+  }
 }
 
 /** Every local day from $3 to $4 (params: wsId, tz, from, to). */
@@ -84,3 +121,13 @@ const DAYS = `WITH days AS (SELECT d::date AS day FROM generate_series($3::date,
 /** `col` falls between the start of local day $3 and the end of local day $4. */
 const IN_RANGE = (col: string) =>
   `${col} >= ($3::date::timestamp AT TIME ZONE $2) AND ${col} < (($4::date + 1)::timestamp AT TIME ZONE $2)`
+
+/**
+ * Live tasks that entered done between local days $3 and $4: the last local day they did
+ * (when they count as finished) and the first instant (where cycle time stops).
+ */
+const FINISHED = `WITH fin AS (
+  SELECT a.task_id, max((a.at AT TIME ZONE $2)::date) AS day, min(a.at) AS first_done
+  FROM task_activity a JOIN tasks t ON t.id = a.task_id AND t.deleted_at IS NULL
+  WHERE a.workspace_id = $1 AND a.kind = 'status' AND a.to_status = 'done' AND ${IN_RANGE('a.at')}
+  GROUP BY a.task_id)`

@@ -40,3 +40,8 @@ export async function focusAt(t: TestApp, wsId: string, userId: string, at: Date
     [wsId, userId, sec, at, new Date(at.getTime() + sec * 1000)],
   )
 }
+
+/** Backdates a task's `created` activity (cycle time runs from it). */
+export async function createdAt(t: TestApp, taskId: string, at: Date): Promise<void> {
+  await t.db.query(`UPDATE task_activity SET at = $2 WHERE task_id = $1 AND kind = 'created'`, [taskId, at])
+}
