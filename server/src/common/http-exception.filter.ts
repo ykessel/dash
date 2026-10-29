@@ -7,7 +7,7 @@ export const ERROR_FIELDS = [
   'desc', 'hue', 'icon', 'status', 'start', 'due', 'lead', 'members', 'userIds', 'version', 'done',
   'project', 'assignee', 'priority', 'estimate', 'beforeId', 'text',
   'date', 'dur', 'where', 'kind', 'people', 'from', 'to',
-  'plannedSec', 'actualSec', 'label', 'taskId', 'notify', 'look', 'session', 'pause', 'avatarSkin',
+  'plannedSec', 'actualSec', 'label', 'taskId', 'notify', 'look', 'range', 'session', 'pause', 'avatarSkin',
 ] as const
 export type ErrorField = (typeof ERROR_FIELDS)[number]
 
