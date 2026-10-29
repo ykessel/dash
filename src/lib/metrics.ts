@@ -64,9 +64,9 @@ export function thisWeek(data: Data): { values: number[]; todayIndex: number } {
 export function myToday(data: Data) {
   const today = todayIso()
   const mine = data.tasks.filter(t => t.assignee === data.me)
-  const dueToday = mine.filter(t => (t.status !== 'done' && t.due <= today) || t.doneAt === today)
+  const dueToday = mine.filter(t => (t.status !== 'done' && (!!t.due && t.due <= today)) || t.doneAt === today)
   const done = dueToday.filter(t => t.status === 'done').length
-  const overdue = mine.filter(t => t.status !== 'done' && t.due < today).length
+  const overdue = mine.filter(t => t.status !== 'done' && (!!t.due && t.due < today)).length
   return { total: dueToday.length, done, left: dueToday.length - done, overdue, list: dueToday }
 }
 
@@ -105,7 +105,10 @@ export function prioRank(t: Task) {
 }
 
 export function sortByDue(a: Task, b: Task) {
-  return a.due === b.due ? prioRank(a) - prioRank(b) : a.due < b.due ? -1 : 1
+  // Tasks without a date sort after every dated one.
+  if (a.due === b.due) return prioRank(a) - prioRank(b)
+  if (!a.due || !b.due) return a.due ? -1 : 1
+  return a.due < b.due ? -1 : 1
 }
 
 export function daysLeft(due: string) {

@@ -3,7 +3,8 @@ import type { CalEvent, Data, Hue, Notice, Person, Priority, Project, Status, Ta
 
 export const DATA_VERSION = 3
 
-const people: Person[] = [
+/** The sample team, also drawn on the sign-in showcase. */
+export const people: Person[] = [
   { id: 'lin', name: 'Lin Zhao', role: 'Product Lead', team: 'Product', city: 'London', tz: 'Europe/London', presence: 'online', capacity: 32, email: 'lin@pane.app', skin: 1 },
   { id: 'nia', name: 'Nia Okoro', role: 'Design Lead', team: 'Design', city: 'Lagos', tz: 'Africa/Lagos', presence: 'focus', note: 'until 11:30 AM', capacity: 32, email: 'nia@pane.app', skin: 4 },
   { id: 'elise', name: 'Elise Marchand', role: 'Product Designer', team: 'Design', city: 'Lyon', tz: 'Europe/Paris', presence: 'online', capacity: 36, email: 'elise@pane.app', skin: 0 },

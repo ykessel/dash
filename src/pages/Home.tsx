@@ -187,7 +187,7 @@ function MyTasks() {
   const { data, me, project, toggleDone, openDrawer } = useStore()
   const today = todayIso()
   const list = data.tasks
-    .filter(t => t.assignee === me.id && ((t.status !== 'done' && t.due <= today) || t.doneAt === today))
+    .filter(t => t.assignee === me.id && ((t.status !== 'done' && (!!t.due && t.due <= today)) || t.doneAt === today))
     .sort((a, b) => (a.status === 'done' ? 1 : 0) - (b.status === 'done' ? 1 : 0) || sortByDue(a, b))
     .slice(0, 7)
   return (

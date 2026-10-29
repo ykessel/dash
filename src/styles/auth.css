@@ -4,11 +4,18 @@
   box-sizing: border-box;
   height: 100dvh;
   overflow: hidden;
+  --card-z: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(420px, 520px);
+  grid-template-columns: minmax(0, 1.1fr) minmax(420px, calc(520px * var(--card-z)));
+  grid-template-rows: minmax(0, 1fr);
   gap: var(--gutter);
   padding: var(--edge) var(--gutter) var(--edge) var(--edge);
 }
+/* Big monitors: grow the form with the tour so the two halves stay balanced. */
+@media (min-width: 2200px) and (min-height: 1300px) { .auth { --card-z: 1.3; } }
+@media (min-width: 2800px) and (min-height: 1600px) { .auth { --card-z: 1.55; } }
+@media (min-width: 3400px) and (min-height: 1900px) { .auth { --card-z: 1.9; } }
+.auth__main > .auth-card { zoom: var(--card-z); }
 .auth__main { min-height: 0; display: flex; flex-direction: column; align-items: center; padding: 12px 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; outline: none; }
 .auth__main::-webkit-scrollbar { display: none; }
 .auth__main > .auth-card { margin-block: auto; flex: none; }
@@ -100,28 +107,37 @@
 /* Showcase */
 .auth-show {
   position: relative;
+  /* Sized by the grid, not its content, so the tour can scale to the panel. */
+  container: show / size;
   border-radius: var(--r-xl);
   overflow: hidden;
   display: flex;
-  flex-direction: column;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: center;
   padding: clamp(24px, 4vh, 48px) clamp(28px, 4vw, 56px);
   min-height: 0;
   background:
-    radial-gradient(60% 50% at 20% 15%, color-mix(in srgb, var(--accent) 30%, transparent), transparent 70%),
-    radial-gradient(50% 45% at 85% 85%, color-mix(in srgb, var(--purple) 26%, transparent), transparent 70%),
+    radial-gradient(70% 55% at 85% 30%, color-mix(in srgb, var(--accent) 30%, transparent), transparent 70%),
+    radial-gradient(45% 40% at 10% 95%, color-mix(in srgb, var(--pink) 20%, transparent), transparent 70%),
     var(--glass-chrome);
   box-shadow: var(--depth), var(--shadow);
   animation: side-in 0.9s var(--ease) backwards;
 }
-/* Product tour */
-.auth-show { justify-content: center; gap: clamp(14px, 2.6vh, 26px); background:
-    radial-gradient(70% 55% at 85% 30%, color-mix(in srgb, var(--accent) 30%, transparent), transparent 70%),
-    radial-gradient(45% 40% at 10% 95%, color-mix(in srgb, var(--pink) 20%, transparent), transparent 70%),
-    var(--glass-chrome); }
-.auth-show > * { width: 100%; max-width: 920px; margin-inline: auto; }
+
+/* Product tour. Laid out at 920 × ~715px, then zoomed as a whole on big
+   panels so the copy, window and cards keep their proportions instead of
+   floating small in a sea of gradient. Sizes below are the panel's content
+   box (inside its padding); steps aim for ~70-75% of the whole panel. */
+.tour { width: 100%; max-width: 920px; max-height: 100%; display: flex; flex-direction: column; gap: clamp(14px, 2.6vh, 26px); }
+@container show (min-width: 1130px) and (min-height: 880px) { .tour { zoom: 1.1; } }
+@container show (min-width: 1290px) and (min-height: 1030px) { .tour { zoom: 1.25; } }
+@container show (min-width: 1470px) and (min-height: 1180px) { .tour { zoom: 1.4; } }
+@container show (min-width: 1690px) and (min-height: 1380px) { .tour { zoom: 1.6; } }
+@container show (min-width: 1970px) and (min-height: 1620px) { .tour { zoom: 1.85; } }
+@container show (min-width: 2250px) and (min-height: 1860px) { .tour { zoom: 2.1; } }
+
 .tour__hero { position: relative; flex: none; height: clamp(280px, 44vh, 440px); }
-.tour__copy { position: relative; z-index: 2; width: min(400px, 47%); display: grid; gap: 14px; animation: rise 0.8s 0.1s var(--ease) backwards; }
+.tour__copy { position: relative; z-index: 2; width: min(400px, 42%); display: grid; gap: 14px; animation: rise 0.8s 0.1s var(--ease) backwards; }
 .tour__eyebrow { font-size: 12.5px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-ink); }
 .tour__copy h2 { font-family: var(--font-display); font-size: clamp(32px, 1.6vw + 16px, 46px); font-weight: 700; line-height: 1.05; letter-spacing: -0.04em; }
 .tour__copy p { font-size: 16px; line-height: 1.5; color: var(--text-2); }
@@ -129,8 +145,9 @@
 .tour__window {
   position: absolute;
   top: 8px;
-  right: clamp(-90px, -4vw, -20px);
-  width: min(500px, 58%);
+  /* The tilt pushes the right edge ~7% wider; keep it inside the panel's padding so it never gets clipped. */
+  right: 0;
+  width: min(500px, 54%);
   height: calc(100% - 34px);
   border-radius: 24px;
   overflow: hidden;
@@ -273,7 +290,7 @@
 @media (max-width: 1250px) {
   .tour__copy { width: 100%; }
   .tour__hero { height: auto; }
-  .tour__window { position: relative; top: 0; right: auto; width: 100%; margin-top: 20px; transform: none; height: clamp(200px, 34vh, 320px); }
+  .tour__window { position: relative; top: 0; right: auto; width: 100%; margin-top: 20px; transform: none; height: clamp(170px, 28vh, 320px); }
   .tour__toast { left: auto; right: 16px; bottom: 16px; }
   .tour__feature { align-items: center; padding: 12px 14px; }
   .tour__feature p { display: none; }
@@ -287,3 +304,11 @@
   .auth-card { padding: 22px 18px 20px; }
   .auth-demo ul { grid-template-columns: 1fr; }
 }
+
+/* Boot and workspace loading: one quiet spinner over the wallpaper. */
+.boot { position: fixed; inset: 0; display: grid; place-items: center; z-index: 1; }
+.boot .spinner { width: 28px; height: 28px; }
+.boot--error { place-content: center; gap: 12px; text-align: center; padding: 16px; }
+.boot--error h1 { margin: 0; font-size: 20px; }
+.boot--error p { margin: 0; color: var(--text-2); }
+.boot__actions { display: flex; gap: 8px; justify-content: center; }

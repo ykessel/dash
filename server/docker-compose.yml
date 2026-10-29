@@ -1,0 +1,20 @@
+name: pane
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: pane
+      POSTGRES_PASSWORD: pane
+      POSTGRES_DB: pane
+    ports: ["5434:5432"]
+    volumes:
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - pgdata:/var/lib/postgresql/data
+  redis:
+    image: redis:7
+    ports: ["6380:6379"]
+  mail:
+    image: axllent/mailpit
+    ports: ["1025:1025", "8025:8025"]
+volumes:
+  pgdata:

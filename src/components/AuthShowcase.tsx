@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { people as SAMPLE } from '../data/seed'
 import { useStore } from '../store'
 import { Icon } from './Icon'
 import { Avatar } from './ui'
@@ -45,55 +46,57 @@ export function AuthShowcase() {
       onFocus={() => setPaused(true)}
       onBlur={() => setPaused(false)}
     >
-      <div className="tour__hero">
-        <div className="tour__copy">
-          <span className="tour__eyebrow">Your workspace, at a glance</span>
-          <h2>Everything your team runs on, in one pane.</h2>
-          <p>Pick up exactly where you left off: today’s meetings, the board, and the work that’s due.</p>
-        </div>
+      <div className="tour">
+        <div className="tour__hero">
+          <div className="tour__copy">
+            <span className="tour__eyebrow">Your workspace, at a glance</span>
+            <h2>Everything your team runs on, in one pane.</h2>
+            <p>Pick up exactly where you left off: today’s meetings, the board, and the work that’s due.</p>
+          </div>
 
-        <div className="tour__window glass" aria-hidden="true">
-          <div className="tour__chrome"><i /><i /><i /></div>
-          <div className="tour__app">
-            <nav className="tour__nav">
-              {NAV.map(x => <span key={x} className={x === s.name ? 'is-on' : ''}>{x}</span>)}
-            </nav>
-            <div className="tour__screen" key={i}>
-              {i === 0 && <HomeScreen />}
-              {i === 1 && <TasksScreen />}
-              {i === 2 && <CalendarScreen />}
+          <div className="tour__window glass" aria-hidden="true">
+            <div className="tour__chrome"><i /><i /><i /></div>
+            <div className="tour__app">
+              <nav className="tour__nav">
+                {NAV.map(x => <span key={x} className={x === s.name ? 'is-on' : ''}>{x}</span>)}
+              </nav>
+              <div className="tour__screen" key={i}>
+                {i === 0 && <HomeScreen />}
+                {i === 1 && <TasksScreen />}
+                {i === 2 && <CalendarScreen />}
+              </div>
             </div>
+          </div>
+
+          <div className={`tour__toast tour__toast--${s.toast.tone}`} key={`t${i}`} aria-hidden="true">
+            <span className="tour__toast-ico"><Icon name={s.toast.icon} size={15} /></span>
+            {s.toast.text}
+            {s.toast.undo && <span className="tour__undo">Undo</span>}
           </div>
         </div>
 
-        <div className={`tour__toast tour__toast--${s.toast.tone}`} key={`t${i}`} aria-hidden="true">
-          <span className="tour__toast-ico"><Icon name={s.toast.icon} size={15} /></span>
-          {s.toast.text}
-          {s.toast.undo && <span className="tour__undo">Undo</span>}
-        </div>
-      </div>
-
-      <ul className="tour__features">
-        {FEATURES.map((f, k) => (
-          <li key={f.title} className={`tour__feature glass ${k === s.feature ? 'is-on' : ''}`} style={{ ['--i' as string]: k }}>
-            <span className="picon tour__tile" data-hue={f.hue}><Icon name={f.icon} /></span>
-            <div><b>{f.title}</b><p>{f.text}</p></div>
-          </li>
-        ))}
-      </ul>
-
-      <div className="tour__foot">
-        <div className="tour__dots" role="tablist" aria-label="Tour screens">
-          {SLIDES.map((x, k) => (
-            <button key={x.name} role="tab" aria-selected={k === i} aria-label={x.name} className={k === i ? 'is-on' : ''} onClick={() => setI(k)}>
-              {k === i && !paused && <i key={i} />}
-            </button>
+        <ul className="tour__features">
+          {FEATURES.map((f, k) => (
+            <li key={f.title} className={`tour__feature glass ${k === s.feature ? 'is-on' : ''}`} style={{ ['--i' as string]: k }}>
+              <span className="picon tour__tile" data-hue={f.hue}><Icon name={f.icon} /></span>
+              <div><b>{f.title}</b><p>{f.text}</p></div>
+            </li>
           ))}
-          <span className="tour__count">{i + 1} of {n} · {s.name}</span>
-        </div>
-        <div className="tour__arrows">
-          <button className="ibtn" aria-label="Previous screen" onClick={() => go(-1)}><Icon name="left" size={18} /></button>
-          <button className="ibtn" aria-label="Next screen" onClick={() => go(1)}><Icon name="right" size={18} /></button>
+        </ul>
+
+        <div className="tour__foot">
+          <div className="tour__dots" role="tablist" aria-label="Tour screens">
+            {SLIDES.map((x, k) => (
+              <button key={x.name} role="tab" aria-selected={k === i} aria-label={x.name} className={k === i ? 'is-on' : ''} onClick={() => setI(k)}>
+                {k === i && !paused && <i key={i} />}
+              </button>
+            ))}
+            <span className="tour__count">{i + 1} of {n} · {s.name}</span>
+          </div>
+          <div className="tour__arrows">
+            <button className="ibtn" aria-label="Previous screen" onClick={() => go(-1)}><Icon name="left" size={18} /></button>
+            <button className="ibtn" aria-label="Next screen" onClick={() => go(1)}><Icon name="right" size={18} /></button>
+          </div>
         </div>
       </div>
     </aside>
@@ -103,8 +106,8 @@ export function AuthShowcase() {
 /* ---- the three mini screens ---- */
 
 function HomeScreen() {
-  const { lastUser, data } = useStore()
-  const first = (lastUser ?? data.people[0]).name.split(' ')[0]
+  const { lastUser } = useStore()
+  const first = (lastUser ?? SAMPLE[0]).name.split(' ')[0]
   return (
     <>
       <b className="tour__h">Good morning, {first}</b>
@@ -134,8 +137,7 @@ function HomeScreen() {
 }
 
 function TasksScreen() {
-  const { data } = useStore()
-  const p = (id: string) => data.people.find(x => x.id === id) ?? data.people[0]
+  const p = (id: string) => SAMPLE.find(x => x.id === id) ?? SAMPLE[0]
   const cols: { name: string; dot: string; cards: { t: string; hue: string; who: string; lifted?: boolean }[] }[] = [
     { name: 'To do', dot: 'todo', cards: [{ t: 'Moodboard round one', hue: 'orange', who: 'camila' }, { t: 'Media plan budget', hue: 'orange', who: 'ines' }] },
     { name: 'In progress', dot: 'progress', cards: [{ t: 'Creative brief draft', hue: 'orange', who: 'freya' }, { t: 'Settings search', hue: 'blue', who: 'haruto' }] },

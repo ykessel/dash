@@ -297,7 +297,7 @@ function TaskGroups({ id }: { id: string }) {
                       <button className={`prow ${t.status === 'done' ? 'is-done' : ''}`} onClick={() => openDrawer({ kind: 'task', id: t.id })}>
                         <span className="prow__title">{t.title}</span>
                         {t.status !== 'done' ? <Prio v={t.priority} hideLow /> : <span />}
-                        <span className={`prow__due ${t.status !== 'done' && t.due < today ? 'is-late' : ''}`}>{t.status === 'done' ? short(t.doneAt ?? t.due) : relDue(t.due)}</span>
+                        <span className={`prow__due ${t.status !== 'done' && (!!t.due && t.due < today) ? 'is-late' : ''}`}>{t.status === 'done' ? short(t.doneAt ?? t.due) : relDue(t.due)}</span>
                         <Avatar p={person(t.assignee)} size={24} />
                       </button>
                     </li>

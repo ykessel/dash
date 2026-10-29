@@ -3,3 +3,7 @@ dist
 *.log
 .DS_Store
 *.tsbuildinfo
+
+# Local env files hold credentials (Neon, Resend…); only the example is tracked.
+.env*
+!.env.example
