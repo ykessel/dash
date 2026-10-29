@@ -6,6 +6,7 @@ import cookieParser from 'cookie-parser'
 import type { Express } from 'express'
 import helmet from 'helmet'
 import { AppModule } from './app.module'
+import { AppIoAdapter } from './realtime/io.adapter'
 import { AppExceptionFilter } from './common/http-exception.filter'
 import type { Env } from './config/env'
 
@@ -19,6 +20,7 @@ export function configureApp(app: INestApplication) {
   app.setGlobalPrefix('api/v1')
   app.use(helmet())
   app.enableCors({ origin: config.get('APP_URL', { infer: true }), credentials: true })
+  app.useWebSocketAdapter(new AppIoAdapter(app, config.get('APP_URL', { infer: true })))
   app.use(cookieParser())
   app.useGlobalFilters(new AppExceptionFilter())
 }

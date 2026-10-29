@@ -20,6 +20,10 @@ export class MailService {
     return this.send(to, 'Your Pane sign-in link', 'Use this link to sign in to Pane.', 'Sign in', link, 'This link works for 15 minutes and only once.')
   }
 
+  sendInvite(to: string, workspaceName: string, inviterName: string, link: string) {
+    return this.send(to, `${inviterName} invited you to ${workspaceName} on Pane`, `${inviterName} invited you to join ${workspaceName} on Pane.`, `Join ${workspaceName}`, link, 'This invite works for 7 days.')
+  }
+
   private send(to: string, subject: string, lead: string, action: string, link: string, foot: string) {
     return this.mailer.send({
       to,

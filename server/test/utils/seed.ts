@@ -1,4 +1,5 @@
 import { hashPassword } from '../../src/auth/passwords'
+import { SessionService } from '../../src/auth/session.service'
 import type { User } from '../../src/users/user.entity'
 import { UsersService } from '../../src/users/users.service'
 import type { TestApp } from './app'
@@ -20,4 +21,11 @@ export function refreshCookie(res: { headers: Record<string, unknown> }): string
   const c = all.find(x => x.startsWith('pane_rt='))
   if (!c) throw new Error('no pane_rt cookie set')
   return c.split(';')[0]
+}
+
+/** A signed-in user (seeded if new) with a fresh access token and its Authorization header. */
+export async function signedIn(t: TestApp, email = 'lin@pane.app'): Promise<{ user: User; token: string; auth: { Authorization: string } }> {
+  const user = (await t.app.get(UsersService).findByEmail(email)) ?? (await seedUser(t, email))
+  const { accessToken } = await t.app.get(SessionService).start(user, { ip: '127.0.0.1', userAgent: 'test', persistent: true })
+  return { user, token: accessToken, auth: { Authorization: `Bearer ${accessToken}` } }
 }
