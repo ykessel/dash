@@ -72,6 +72,8 @@ export interface Task {
   comments: Comment[]
   doneAt?: string
   order: number
+  /** Server edit counter; PATCH sends it back so a stale edit gets 409. */
+  version?: number
 }
 
 export type EventKind = 'meeting' | 'review' | 'team' | 'focus' | 'call' | 'milestone'
