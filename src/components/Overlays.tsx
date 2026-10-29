@@ -199,10 +199,12 @@ function ProjectForm({ onDone }: { onDone: () => void }) {
   const submit = (e: FormEvent) => {
     e.preventDefault()
     if (!name.trim()) { setErr(true); return }
-    const p = addProject({ name: name.trim(), desc: desc.trim() || 'A fresh project.', hue, icon, due, status: 'planning' })
-    onDone()
-    notify(`Created ${p.name}`, 'ok')
-    go(`projects/${p.id}`)
+    addProject({ name: name.trim(), desc: desc.trim() || 'A fresh project.', hue, icon, due, status: 'planning' }).then(p => {
+      if (!p) return
+      onDone()
+      notify(`Created ${p.name}`, 'ok')
+      go(`projects/${p.id}`)
+    })
   }
   return (
     <form className="mform" onSubmit={submit} noValidate>
@@ -246,9 +248,11 @@ function InviteForm({ onDone }: { onDone: () => void }) {
     e.preventDefault()
     if (!name.trim()) { setErr('Name is required.'); return }
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) { setErr('Enter a valid email address.'); return }
-    invite(name.trim(), email.trim(), team, role.trim() || `${team} teammate`)
-    onDone()
-    notify(`Invite sent to ${email.trim()}`, 'ok')
+    invite(name.trim(), email.trim(), team, role.trim() || `${team} teammate`).then(ok => {
+      if (!ok) return
+      onDone()
+      notify(`Invite sent to ${email.trim()}`, 'ok')
+    })
   }
   return (
     <form className="mform" onSubmit={submit} noValidate>
@@ -316,7 +320,7 @@ function DrawerPanel({ leaving, onClose, children }: { leaving: boolean; onClose
 }
 
 function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
-  const { data, me, person, project, updateTask, moveTask, removeTask, startFocus, toggleDone } = useStore()
+  const { data, person, project, moveTask, removeTask, startFocus, toggleDone, addSubtask, toggleSubtask, addComment: comment } = useStore()
   const t = data.tasks.find(x => x.id === id)
   const [sub, setSub] = useState('')
   const [msg, setMsg] = useState('')
@@ -328,16 +332,18 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const addSub = (e: FormEvent) => {
     e.preventDefault()
     if (!sub.trim()) return
-    updateTask(t.id, { subtasks: [...t.subtasks, { id: `s${Date.now()}`, title: sub.trim(), done: false }] })
+    addSubtask(t.id, sub.trim())
     setSub('')
   }
   const addComment = (e: FormEvent) => {
     e.preventDefault()
     if (!msg.trim()) return
-    updateTask(t.id, { comments: [...t.comments, { id: `c${Date.now()}`, who: me.id, text: msg.trim(), at: Date.now() }] })
+    // @Name of a teammate becomes a mention, so they get a notice.
+    const text = msg.trim()
+    comment(t.id, text, data.people.filter(x => text.includes(`@${x.name.split(' ')[0]}`)).map(x => x.id))
     setMsg('')
   }
-  const toggleSub = (sid: string) => updateTask(t.id, { subtasks: t.subtasks.map(x => (x.id === sid ? { ...x, done: !x.done } : x)) })
+  const toggleSub = (sid: string) => toggleSubtask(t.id, sid)
 
   return (
     <>

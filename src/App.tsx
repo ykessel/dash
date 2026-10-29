@@ -4,7 +4,7 @@ import { Island } from './components/Island'
 import { DrawerHost, ModalHost } from './components/Overlays'
 import { Sidebar, TabBar, Toolbar } from './components/Shell'
 import { Wallpaper } from './components/Wallpaper'
-import { AUTH_ROUTES, go, useRoute, type RouteName } from './lib/router'
+import { AUTH_ROUTES, go, LINK_ROUTES, useRoute, type RouteName } from './lib/router'
 import { AuthPage } from './pages/Auth'
 import { Calendar } from './pages/Calendar'
 import { Home } from './pages/Home'
@@ -20,16 +20,22 @@ const GO_KEYS: Record<string, RouteName> = { h: 'home', t: 'tasks', c: 'calendar
 
 export function App() {
   const route = useRoute()
-  const { openModal, startFocus, setLook, modal, drawer, finder, signedIn } = useStore()
+  const { openModal, startFocus, setLook, modal, drawer, finder, signedIn, ready, loaded } = useStore()
   const isAuth = AUTH_ROUTES.includes(route.name)
 
-  // Mock auth gate: signed-out visitors land on Sign in; signed-in users skip it.
+  // Auth gate: signed-out visitors land on Sign in; signed-in users skip it (except link pages,
+  // which finish on their own). An invite opened while signed out resumes after sign-in.
   useEffect(() => {
+    if (!ready) return
     // Read the hash itself: a redirect may already be on its way (e.g. to "signed out").
-    const target = location.hash.replace(/^#\/?/, '').split('/')[0] as RouteName
+    const target = location.hash.replace(/^#\/?/, '').split(/[/?]/)[0] as RouteName
     if (!signedIn && !AUTH_ROUTES.includes(target)) go('signin')
-    else if (signedIn && isAuth) go('home')
-  }, [signedIn, isAuth])
+    else if (signedIn && isAuth && !LINK_ROUTES.includes(target)) {
+      let invite: string | null = null
+      try { invite = sessionStorage.getItem('pane:invite'); sessionStorage.removeItem('pane:invite') } catch { /* ignore */ }
+      go(invite ? `invite?token=${encodeURIComponent(invite)}` : 'home')
+    }
+  }, [signedIn, isAuth, ready])
 
   // Scroll to top when the page changes.
   useEffect(() => {
@@ -37,7 +43,7 @@ export function App() {
   }, [route.name, route.param])
 
   useEffect(() => {
-    const t: Partial<Record<RouteName, string>> = { signin: 'Sign in', signup: 'Create account', signedout: 'Signed out' }
+    const t: Partial<Record<RouteName, string>> = { signin: 'Sign in', signup: 'Create account', signedout: 'Signed out', auth: 'Signing in', invite: 'Invite' }
     document.title = `${t[route.name] ?? route.name[0].toUpperCase() + route.name.slice(1)} · Pane`
   }, [route.name])
 
@@ -84,11 +90,21 @@ export function App() {
     return () => window.removeEventListener('keydown', on)
   }, [openModal, startFocus, setLook, modal, drawer, finder, signedIn])
 
+  if (!ready || (signedIn && !loaded && !isAuth)) {
+    return (
+      <>
+        <Wallpaper />
+        <div className="boot" role="status" aria-live="polite"><span className="spinner" aria-hidden="true" /><span className="sr-only">Loading your workspace…</span></div>
+        <Island />
+      </>
+    )
+  }
+
   if (isAuth || !signedIn) {
     return (
       <>
         <Wallpaper />
-        {isAuth && <AuthPage route={route.name} />}
+        {isAuth && <AuthPage route={route} />}
         <Island />
       </>
     )

@@ -2,19 +2,23 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'rea
 import { AuthShowcase } from '../components/AuthShowcase'
 import { BrandMark, Icon } from '../components/Icon'
 import { Avatar, Seg } from '../components/ui'
-import type { Team } from '../data/types'
-import { go, type RouteName } from '../lib/router'
-import { DEMO_PASSWORD, useStore, type AuthResult } from '../store'
+import type { Person, Team } from '../data/types'
+import { go, type Route, type RouteName } from '../lib/router'
+import { useStore, type AuthResult } from '../store'
 
-/* Mock sign-in, sign-up and signed-out screens, built from the app's glass,
-   gel buttons, fields and motion. Nothing leaves the browser. */
+/* Sign-in, sign-up, signed-out and link screens, built from the app's glass,
+   gel buttons, fields and motion, talking to the Pane API. */
 
-export function AuthPage({ route }: { route: RouteName }) {
+export function AuthPage({ route: r }: { route: Route }) {
+  const route = r.name
   return (
     <div className="auth">
       <AuthShowcase />
       <main className="auth__main" id="main">
-        {route === 'signup' ? <SignUp /> : route === 'signedout' ? <SignedOut /> : <SignIn />}
+        {route === 'signup' ? <SignUp />
+          : route === 'signedout' ? <SignedOut />
+          : route === 'auth' || route === 'invite' ? <LinkLanding route={route} step={r.param} query={r.query} />
+          : <SignIn error={r.query.error} />}
       </main>
     </div>
   )
@@ -82,16 +86,16 @@ function Submit({ busy, children }: { busy: boolean; children: ReactNode }) {
   )
 }
 
-function Social({ onPick }: { onPick: (provider: string) => void }) {
+function Social({ onPick }: { onPick: (provider: 'google' | 'github') => void }) {
   return (
     <div className="auth-social">
-      <button type="button" className="btn btn--glass" onClick={() => onPick('Google')}>
+      <button type="button" className="btn btn--glass" onClick={() => onPick('google')}>
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="#4285F4" d="M21.6 12.2c0-.7-.1-1.4-.2-2H12v3.8h5.4a4.6 4.6 0 0 1-2 3v2.5h3.2c1.9-1.7 3-4.3 3-7.3Z"/><path fill="#34A853" d="M12 22c2.7 0 5-.9 6.6-2.4l-3.2-2.5c-.9.6-2 1-3.4 1-2.6 0-4.8-1.8-5.6-4.1H3.1v2.6A10 10 0 0 0 12 22Z"/><path fill="#FBBC05" d="M6.4 14a6 6 0 0 1 0-3.9V7.5H3.1a10 10 0 0 0 0 9.1L6.4 14Z"/><path fill="#EA4335" d="M12 6c1.5 0 2.8.5 3.8 1.5l2.8-2.8A10 10 0 0 0 3.1 7.5L6.4 10C7.2 7.7 9.4 6 12 6Z"/></svg>
         Google
       </button>
-      <button type="button" className="btn btn--glass" onClick={() => onPick('Apple')}>
-        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7a4.6 4.6 0 0 0-3.6-2c-1.5-.2-3 .9-3.8.9-.8 0-2-.9-3.3-.9-1.7 0-3.3 1-4.2 2.6-1.8 3.1-.5 7.7 1.3 10.2.8 1.2 1.8 2.6 3.1 2.6 1.2-.1 1.7-.8 3.2-.8s1.9.8 3.2.8c1.3 0 2.2-1.2 3-2.4a10 10 0 0 0 1.4-2.8 4.3 4.3 0 0 1-2.4-4.5ZM14 5.3c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1 .1 2.1-.6 2.8-1.4Z"/></svg>
-        Apple
+      <button type="button" className="btn btn--glass" onClick={() => onPick('github')}>
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .8.1-.7.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.5 9.5 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg>
+        GitHub
       </button>
     </div>
   )
@@ -101,48 +105,69 @@ function Divider({ children }: { children: ReactNode }) {
   return <div className="auth-or"><span>{children}</span></div>
 }
 
-/* Short fake delay so the button can show its busy state, like a real request. */
+/* Busy while a request runs, so the button shows its spinner. */
 function useSubmit() {
   const [busy, setBusy] = useState(false)
-  const run = (work: () => void, ms = 750) => {
+  const run = (work: () => void | Promise<void>) => {
     setBusy(true)
-    window.setTimeout(() => { setBusy(false); work() }, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : ms)
+    Promise.resolve().then(work).finally(() => setBusy(false))
   }
   return [busy, run] as const
 }
 
 /* ---------------- Sign in ---------------- */
 
-function SignIn() {
-  const { data, signIn, signInAs, notify, lastUser } = useStore()
+/** Messages for the `?error=` codes OAuth and expired links send back. */
+const LINK_ERRORS: Record<string, string> = {
+  oauth_failed: 'That sign-in didn’t finish. Try again.',
+  oauth_email_unverified: 'Verify that email with the provider first, then try again.',
+  email_unverified: 'Verify your email with Pane first, then link the provider.',
+  provider_disabled: 'That sign-in option isn’t set up yet.',
+}
+
+function SignIn({ error }: { error?: string }) {
+  const { signIn, signInWith, requestMagicLink, forgotPassword, notify, lastUser } = useStore()
   const [email, setEmail] = useState(lastUser?.email ?? '')
   const [password, setPassword] = useState('')
   const [remember, setRemember] = useState(true)
-  const [err, setErr] = useState<Extract<AuthResult, { ok: false }> | null>(null)
+  const [err, setErr] = useState<Extract<AuthResult, { ok: false }> | null>(
+    error ? { ok: false, field: 'email', error: LINK_ERRORS[error] ?? 'That sign-in didn’t finish. Try again.' } : null,
+  )
   const [shake, setShake] = useState(0)
   const [busy, run] = useSubmit()
-  const demo = ['lin', 'nia', 'kwame', 'ines'].map(id => data.people.find(p => p.id === id)).filter(Boolean) as typeof data.people
 
+  const fail = (r: Extract<AuthResult, { ok: false }>) => { setErr(r); setShake(s => s + 1) }
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    run(() => {
-      const r = signIn(email, password, remember)
-      if (r.ok) {
-        const name = data.people.find(p => p.email.toLowerCase() === email.trim().toLowerCase())?.name.split(' ')[0]
-        notify(`Welcome back, ${name}`, 'ok')
-        go('home')
-      } else {
-        setErr(r)
-        setShake(s => s + 1)
-      }
+    run(async () => {
+      const r = await signIn(email, password, remember)
+      if (!r.ok) return fail(r)
+      notify('Welcome back', 'ok')
+      go('home')
     })
   }
 
-  const social = (provider: string) => run(() => {
-    signInAs(lastUser?.id ?? 'lin')
-    notify(`Signed in with ${provider}`, 'ok')
-    go('home')
-  }, 900)
+  const needEmail = () => {
+    if (/^\S+@\S+\.\S+$/.test(email.trim())) return false
+    fail({ ok: false, field: 'email', error: 'Enter your email first.' })
+    return true
+  }
+  const forgot = () => {
+    if (needEmail()) return
+    run(async () => {
+      const r = await forgotPassword(email)
+      if (!r.ok) return fail(r)
+      notify(`If ${email.trim()} has an account, a reset link is on its way`, 'ok')
+    })
+  }
+  const magic = () => {
+    if (needEmail()) return
+    run(async () => {
+      const r = await requestMagicLink(email)
+      if (!r.ok) return fail(r)
+      notify(`Sign-in link sent to ${email.trim()}`, 'ok')
+    })
+  }
 
   return (
     <AuthCard shake={shake}>
@@ -151,7 +176,7 @@ function SignIn() {
         <h1>Welcome back</h1>
         <p>Sign in to your team’s workspace.</p>
       </header>
-      <Social onPick={social} />
+      <Social onPick={signInWith} />
       <Divider>or with email</Divider>
       <form className="auth-form" onSubmit={submit} noValidate>
         <Field label="Email" error={err?.field === 'email' ? err.error : undefined}>
@@ -169,7 +194,7 @@ function SignIn() {
         <Field
           label="Password"
           error={err?.field === 'password' ? err.error : undefined}
-          aside={<button type="button" className="link auth-forgot" onClick={() => notify(email.includes('@') ? `Reset link sent to ${email.trim()}` : 'Enter your email first, then tap “Forgot?”', email.includes('@') ? 'ok' : 'info')}>Forgot?</button>}
+          aside={<button type="button" className="link auth-forgot" onClick={forgot}>Forgot?</button>}
         >
           <PasswordInput value={password} onChange={v => { setPassword(v); setErr(null) }} autoComplete="current-password" invalid={err?.field === 'password'} />
         </Field>
@@ -179,28 +204,8 @@ function SignIn() {
           Keep me signed in
         </label>
         <Submit busy={busy}>Sign in</Submit>
+        <button type="button" className="btn btn--glass auth-submit" onClick={magic} disabled={busy}>Email me a sign-in link</button>
       </form>
-
-      <section className="auth-demo well">
-        <div className="auth-demo__head">
-          <b>Demo accounts</b>
-          <small>Password <code>{DEMO_PASSWORD}</code></small>
-        </div>
-        <ul>
-          {demo.map(p => (
-            <li key={p.id}>
-              <button
-                type="button"
-                className={`auth-demo__user ${email.toLowerCase() === p.email ? 'is-on' : ''}`}
-                onClick={() => { setEmail(p.email); setPassword(DEMO_PASSWORD); setErr(null) }}
-              >
-                <Avatar p={p} size={34} />
-                <span><b>{p.name}</b><small>{p.role}</small></span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
 
       <p className="auth-foot">New to Pane? <a className="link" href="#/signup">Create an account</a></p>
     </AuthCard>
@@ -235,13 +240,13 @@ function SignUp() {
   const fail = (field: string, error: string) => { setErr({ field, error }); setShake(s => s + 1) }
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    run(() => {
-      if (!terms) return fail('terms', 'Please accept the terms to continue.')
-      const r = signUp({ name, email, password, team, role })
+    if (!terms) return fail('terms', 'Please accept the terms to continue.')
+    run(async () => {
+      const r = await signUp({ name, email, password, team, role })
       if (!r.ok) return fail(r.field, r.error)
-      notify(`Welcome to Pane, ${name.trim().split(' ')[0]}!`, 'ok')
+      notify(`Welcome to Pane, ${name.trim().split(' ')[0]}! Check your email to confirm it.`, 'ok')
       go('home')
-    }, 900)
+    })
   }
   const clear = () => setErr(null)
 
@@ -289,34 +294,103 @@ function SignUp() {
 /* ---------------- Signed out ---------------- */
 
 function SignedOut() {
-  const { lastUser, signInAs, notify } = useStore()
-  const [busy, run] = useSubmit()
+  const { lastUser } = useStore()
   const first = lastUser?.name.split(' ')[0]
   return (
     <AuthCard shake={0}>
       <Brand />
       <div className="auth-out">
         <span className="auth-out__av">
-          {lastUser ? <Avatar p={lastUser} size={88} /> : <Icon name="user" size={40} />}
+          {lastUser
+            ? <Avatar p={{ id: lastUser.email, name: lastUser.name, skin: lastUser.skin, presence: 'away' } as Person} size={88} />
+            : <Icon name="user" size={40} />}
           <span className="auth-out__badge"><Icon name="check" size={16} /></span>
         </span>
         <h1>You’re signed out</h1>
         <p>{first ? `See you soon, ${first}. Your workspace is just as you left it.` : 'Your workspace is just as you left it.'}</p>
       </div>
       <div className="auth-form">
-        {lastUser && (
-          <button
-            className={`btn btn--primary auth-submit ${busy ? 'is-busy' : ''}`}
-            disabled={busy}
-            onClick={() => run(() => { signInAs(lastUser.id); notify(`Welcome back, ${first}`, 'ok'); go('home') })}
-          >
-            {busy && <span className="spinner" aria-hidden="true" />}
-            <span>{busy ? 'One moment…' : `Continue as ${first}`}</span>
-          </button>
-        )}
-        <a className="btn btn--glass auth-submit" href="#/signin">Use another account</a>
+        <a className="btn btn--primary auth-submit" href="#/signin">{first ? `Sign in as ${first}` : 'Sign in'}</a>
       </div>
       <p className="auth-foot">Want a fresh start? <a className="link" href="#/signup">Create an account</a></p>
+    </AuthCard>
+  )
+}
+
+/* ---------------- Links from email and OAuth ---------------- */
+
+/**
+ * Where links land: `#/auth/callback` (back from Google/GitHub), `#/auth/magic`, `#/auth/verify`,
+ * `#/auth/reset` (asks for a new password) and `#/invite`.
+ */
+function LinkLanding({ route, step, query }: { route: RouteName; step?: string; query: Record<string, string> }) {
+  const { completeSignIn, acceptInvite, signedIn, ready, notify } = useStore()
+  const [err, setErr] = useState<string | null>(null)
+  const started = useRef(false)
+  const token = query.token ?? ''
+
+  useEffect(() => {
+    if (!ready || started.current || (route === 'auth' && step === 'reset')) return
+    started.current = true
+    const finish = (r: AuthResult, ok: string) => {
+      if (!r.ok) return setErr(r.error)
+      notify(ok, 'ok')
+      go('home')
+    }
+    if (route === 'invite') {
+      if (!signedIn) {
+        // Remember the invite through sign-in; App sends us back here afterwards.
+        try { sessionStorage.setItem('pane:invite', token) } catch { /* ignore */ }
+        go('signin')
+        return
+      }
+      acceptInvite(token).then(r => finish(r, 'You joined the team'))
+    } else if (step === 'magic') completeSignIn({ magic: token }).then(r => finish(r, 'Signed in'))
+    else if (step === 'verify') completeSignIn({ verify: token }).then(r => finish(r, 'Email confirmed'))
+    else completeSignIn({}).then(r => finish(r, 'Signed in'))
+  }, [ready, route, step, token, signedIn, acceptInvite, completeSignIn, notify])
+
+  if (route === 'auth' && step === 'reset') return <ResetPassword token={token} />
+  return (
+    <AuthCard shake={0}>
+      <Brand />
+      <header className="auth-head">
+        <h1>{err ? 'That link didn’t work' : 'One moment…'}</h1>
+        <p>{err ?? 'Finishing up.'}</p>
+      </header>
+      {err && <a className="btn btn--primary auth-submit" href="#/signin">Back to sign in</a>}
+    </AuthCard>
+  )
+}
+
+function ResetPassword({ token }: { token: string }) {
+  const { completeSignIn, notify } = useStore()
+  const [password, setPassword] = useState('')
+  const [err, setErr] = useState<string | null>(null)
+  const [shake, setShake] = useState(0)
+  const [busy, run] = useSubmit()
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    run(async () => {
+      const r = await completeSignIn({ reset: { token, password } })
+      if (!r.ok) { setErr(r.error); setShake(s => s + 1); return }
+      notify('Password changed', 'ok')
+      go('home')
+    })
+  }
+  return (
+    <AuthCard shake={shake}>
+      <Brand />
+      <header className="auth-head">
+        <h1>Choose a new password</h1>
+        <p>You’ll be signed in right after.</p>
+      </header>
+      <form className="auth-form" onSubmit={submit} noValidate>
+        <Field label="New password" error={err ?? undefined} hint="At least 8 characters.">
+          <PasswordInput value={password} onChange={v => { setPassword(v); setErr(null) }} autoComplete="new-password" invalid={!!err} />
+        </Field>
+        <Submit busy={busy}>Save and sign in</Submit>
+      </form>
     </AuthCard>
   )
 }

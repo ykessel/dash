@@ -41,6 +41,8 @@ export interface Project {
   pinned: boolean
   starred: boolean
   milestones: Milestone[]
+  /** Server edit counter, sent back on PATCH. */
+  version?: number
 }
 
 export type Status = 'todo' | 'progress' | 'review' | 'done'

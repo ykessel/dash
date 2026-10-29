@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { people as SAMPLE } from '../data/seed'
 import { useStore } from '../store'
 import { Icon } from './Icon'
 import { Avatar } from './ui'
@@ -105,8 +106,8 @@ export function AuthShowcase() {
 /* ---- the three mini screens ---- */
 
 function HomeScreen() {
-  const { lastUser, data } = useStore()
-  const first = (lastUser ?? data.people[0]).name.split(' ')[0]
+  const { lastUser } = useStore()
+  const first = (lastUser ?? SAMPLE[0]).name.split(' ')[0]
   return (
     <>
       <b className="tour__h">Good morning, {first}</b>
@@ -136,8 +137,7 @@ function HomeScreen() {
 }
 
 function TasksScreen() {
-  const { data } = useStore()
-  const p = (id: string) => data.people.find(x => x.id === id) ?? data.people[0]
+  const p = (id: string) => SAMPLE.find(x => x.id === id) ?? SAMPLE[0]
   const cols: { name: string; dot: string; cards: { t: string; hue: string; who: string; lifted?: boolean }[] }[] = [
     { name: 'To do', dot: 'todo', cards: [{ t: 'Moodboard round one', hue: 'orange', who: 'camila' }, { t: 'Media plan budget', hue: 'orange', who: 'ines' }] },
     { name: 'In progress', dot: 'progress', cards: [{ t: 'Creative brief draft', hue: 'orange', who: 'freya' }, { t: 'Settings search', hue: 'blue', who: 'haruto' }] },
