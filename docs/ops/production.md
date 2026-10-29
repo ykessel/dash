@@ -39,8 +39,8 @@ Nothing in the repository creates accounts or spends money.
 
 1. **Neon.**
    - Create a project (Postgres 16, region close to Fly's).
-   - Copy the pooled and direct connection strings of the `main` branch.
-   - Create a branch named **`preview`** from `main` *before any customer data exists*, or reset it to seed data. Previews branch from it, and preview URLs are public. Previews connect as `neondb_owner` to the `neondb` database (the Neon defaults); change both in `preview.yml` if yours differ.
+   - Copy the pooled and direct connection strings of the default branch (`production`).
+   - Create a branch named **`preview`** from `production` *before any customer data exists*, or reset it to seed data. Previews branch from it, and preview URLs are public. Previews connect as `neondb_owner` to the `neondb` database (the Neon defaults); change both in `preview.yml` if yours differ.
 2. **Fly.**
    - `fly launch --no-deploy --copy-config` (keep the app name or edit `fly.toml`).
    - `fly secrets set DATABASE_URL=… DATABASE_URL_DIRECT=… JWT_SECRET=… APP_URL=https://… API_URL=https://… SMTP_URL=… MAIL_FROM=…`
@@ -78,9 +78,9 @@ After that:
 ## Backups and restore
 
 - **Neon point-in-time restore** is the backup. Set the history retention on the project to what the plan allows (7 days on Launch, 30 on Scale). To recover:
-  1. Create a branch from `main` at a timestamp before the incident (Console → Branches → Create → "Past point in time").
+  1. Create a branch from `production` at a timestamp before the incident (Console → Branches → Create → "Past point in time").
   2. Check the data there, through its own connection string or `psql`.
-  3. Either restore `main` from it (Console → Restore) or copy the rows needed.
+  3. Either restore `production` from it (Console → Restore) or copy the rows needed.
 - **Drill every quarter.**
   1. Restore yesterday into a throwaway branch.
   2. Point a local API at it (`DATABASE_URL=… pnpm --dir server dev`).
