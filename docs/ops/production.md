@@ -9,7 +9,7 @@ Because frontend and API share an origin, the refresh cookie's `SameSite=Lax` wo
 | Piece | Where | Why |
 | --- | --- | --- |
 | App | Fly.io (`fly.toml`), at least one machine always running | WebSockets and the reminder timer need a live process |
-| Database | Neon Postgres 16 | Pooled URL for the app, direct URL for migrations |
+| Database | Neon Postgres 18 | Pooled URL for the app, direct URL for migrations |
 | Previews | One Fly app plus one Neon branch per PR (`.github/workflows/preview.yml`) | Removed when the PR closes |
 | Errors | Sentry (`SENTRY_DSN`) | Only unexpected 500s; no bodies, cookies, headers, query strings, IPs or local variables (`observability/sentry.ts`) |
 | Logs | JSON on stdout (pino), read with `fly logs` or a log drain | Credentials are redacted |
@@ -38,7 +38,7 @@ Set non-secret values in `fly.toml [env]`. Set everything else with `fly secrets
 Nothing in the repository creates accounts or spends money.
 
 1. **Neon.**
-   - Create a project (Postgres 16, region close to Fly's).
+   - Create a project (Postgres 18, aws-us-east-2, next to Fly `ord`).
    - Copy the pooled and direct connection strings of the default branch (`production`).
    - Create a branch named **`preview`** from `production` *before any customer data exists*, or reset it to seed data. Previews branch from it, and preview URLs are public. Previews connect as `neondb_owner` to the `neondb` database (the Neon defaults); change both in `preview.yml` if yours differ.
 2. **Fly.**

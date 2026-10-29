@@ -2,7 +2,7 @@
 # Secrets (fly secrets set …): DATABASE_URL (Neon -pooler), DATABASE_URL_DIRECT, JWT_SECRET, SMTP_URL,
 # MAIL_FROM, APP_URL, API_URL, plus optional SENTRY_DSN, REDIS_URL, GOOGLE_*/GITHUB_* — docs/ops/production.md.
 app = "dashapp"
-primary_region = "iad"
+primary_region = "ord"  # next to Neon aws-us-east-2 (Ohio)
 
 [build]
   dockerfile = "Dockerfile"
