@@ -24,7 +24,7 @@ Set non-secret values in `fly.toml [env]`. Set everything else with `fly secrets
 | `DATABASE_URL` | yes | Neon **pooled** connection string (`…-pooler…`) |
 | `DATABASE_URL_DIRECT` | yes | Neon direct connection string. Migrations use it (`release_command`). |
 | `JWT_SECRET` | yes | 48+ random characters, e.g. `openssl rand -base64 48` |
-| `APP_URL`, `API_URL` | yes | Both the public origin: `https://dash.fly.dev` (or your own domain later) |
+| `APP_URL`, `API_URL` | yes | Both the public origin: `https://dashapp.fly.dev` (or your own domain later) |
 | `SMTP_URL`, `MAIL_FROM` | yes | Transactional mail provider (Postmark, Resend, SES…) |
 | `COOKIE_SECURE` | yes | `true` (set in `fly.toml`) |
 | `GOOGLE_CLIENT_ID/SECRET`, `GITHUB_CLIENT_ID/SECRET` | no | OAuth apps. The callback is `{API_URL}/api/v1/auth/{google,github}/callback`. Leave them unset and the buttons answer "isn't set up yet". |
@@ -44,7 +44,7 @@ Nothing in the repository creates accounts or spends money.
 2. **Fly.**
    - `fly launch --no-deploy --copy-config` (keep the app name or edit `fly.toml`).
    - `fly secrets set DATABASE_URL=… DATABASE_URL_DIRECT=… JWT_SECRET=… APP_URL=https://… API_URL=https://… SMTP_URL=… MAIL_FROM=…`
-3. **Domain.** The app starts on `https://dash.fly.dev`. For your own domain later:
+3. **Domain.** The app starts on `https://dashapp.fly.dev`. For your own domain later:
    - `fly certs add app.example.com`, then create the DNS records it prints.
    - Set `APP_URL`/`API_URL` to that origin.
 4. **Sentry.**
@@ -64,7 +64,7 @@ Nothing in the repository creates accounts or spends money.
    - Create the environments `preview` and `production`. Add a required reviewer to `production` if deploys should wait for approval.
 
 After that:
-- Every PR gets `https://dash-pr-<n>.fly.dev`, with its own database branch.
+- Every PR gets `https://dashapp-pr-<n>.fly.dev`, with its own database branch.
 - Merging to `main` deploys production (`.github/workflows/deploy.yml`) after CI passes.
 
 ## Alerts
