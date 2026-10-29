@@ -47,6 +47,7 @@ const routes: [Method, (ws: string, ctx: { otherId: string }) => string][] = [
   ['post', ws => `/api/v1/workspaces/${ws}/focus-sessions`],
   ['patch', ws => `/api/v1/workspaces/${ws}/focus-sessions/${ANY}`],
   ['get', ws => `/api/v1/workspaces/${ws}/focus-sessions?from=2026-01-01&to=2026-01-31`],
+  ['get', ws => `/api/v1/workspaces/${ws}/snapshot`],
 ]
 
 describe('tenant isolation', () => {

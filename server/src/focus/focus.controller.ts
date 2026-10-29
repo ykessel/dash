@@ -34,7 +34,6 @@ export class FocusController {
 
   @Get()
   log(@Param('wsId') wsId: string, @Actor() actor: Actor, @Query() query: unknown) {
-    const { from, to } = parseBody(RangeQuery, query)
-    return this.focus.log(wsId, actor.userId, from, to)
+    return this.focus.log(wsId, actor.userId, parseBody(RangeQuery, query))
   }
 }

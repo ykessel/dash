@@ -17,6 +17,7 @@ import { NotificationsModule } from './notifications/notifications.module'
 import { PrefsModule } from './prefs/prefs.module'
 import { ProjectsModule } from './projects/projects.module'
 import { RealtimeModule } from './realtime/realtime.module'
+import { SnapshotModule } from './snapshot/snapshot.module'
 import { TasksModule } from './tasks/tasks.module'
 import { UsersModule } from './users/users.module'
 import { WorkspacesModule } from './workspaces/workspaces.module'
@@ -41,6 +42,7 @@ import { WorkspacesModule } from './workspaces/workspaces.module'
     NotificationsModule,
     FocusModule,
     PrefsModule,
+    SnapshotModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: AppThrottlerGuard }],
 })

@@ -49,6 +49,12 @@ export class CalendarService {
     return this.views(rows)
   }
 
+  /** Every live event of the workspace (for the snapshot). */
+  async all(wsId: string): Promise<CalEventView[]> {
+    const rows = await this.events.find({ where: { workspaceId: wsId, deletedAt: IsNull() }, order: { date: 'ASC', startMin: 'ASC', id: 'ASC' } })
+    return this.views(rows)
+  }
+
   async create(wsId: string, input: EventInput, actor: Actor): Promise<CalEventView> {
     await this.assertRefs(wsId, input)
     const id = await this.ds.transaction(async em => {

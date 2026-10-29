@@ -54,19 +54,18 @@ export class FocusService {
     return toFocusView(await this.repo.findOneByOrFail({ id }))
   }
 
-  /** My finished focus, in minutes per day of my own time zone. */
-  async log(wsId: string, userId: string, from: string, to: string): Promise<FocusLog[]> {
-    assertRange(from, to)
-    const rows: { date: string; minutes: number }[] = await this.ds.query(
+  /** My finished focus, in minutes per day of my own time zone; without a range, every day (for the snapshot). */
+  async log(wsId: string, userId: string, range?: { from: string; to: string }): Promise<FocusLog[]> {
+    if (range) assertRange(range.from, range.to)
+    return this.ds.query(
       `WITH me AS (SELECT tz FROM memberships WHERE workspace_id = $1 AND user_id = $2)
        SELECT to_char((f.started_at AT TIME ZONE me.tz)::date, 'YYYY-MM-DD') AS date,
               round(sum(f.actual_sec) / 60.0)::int AS minutes
        FROM focus_sessions f, me
        WHERE f.workspace_id = $1 AND f.user_id = $2 AND f.ended_at IS NOT NULL
-         AND (f.started_at AT TIME ZONE me.tz)::date BETWEEN $3::date AND $4::date
+         AND ($3::date IS NULL OR (f.started_at AT TIME ZONE me.tz)::date BETWEEN $3::date AND $4::date)
        GROUP BY 1 ORDER BY 1`,
-      [wsId, userId, from, to],
+      [wsId, userId, range?.from ?? null, range?.to ?? null],
     )
-    return rows
   }
 }
