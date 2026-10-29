@@ -40,3 +40,15 @@ export function noEvent(s: Socket, name: string, ms = 300): Promise<void> {
 export function closeSockets(): void {
   for (const s of open.splice(0)) s.close()
 }
+
+/** Resolves with the next `name` payload that matches `pred`, ignoring others; fails after `ms`. */
+export function eventWhere<T = any>(s: Socket, name: string, pred: (p: T) => boolean, ms = 1000): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const on = (payload: T) => {
+      if (!pred(payload)) return
+      clearTimeout(timer); s.off(name, on); resolve(payload)
+    }
+    const timer = setTimeout(() => { s.off(name, on); reject(new Error(`no matching ${name} within ${ms}ms`)) }, ms)
+    s.on(name, on)
+  })
+}
