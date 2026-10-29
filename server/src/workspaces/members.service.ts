@@ -100,9 +100,12 @@ export class MembersService {
   }
 
   /** Everyone back to away: nobody is connected to a process that just started. */
-  async resetAllPresence(): Promise<void> {
-    await this.repo.createQueryBuilder().update().set({ presence: 'away', presenceNote: null })
-      .where(`presence <> 'away' OR presence_note IS NOT NULL`).execute()
+  /** Sets everyone except `keep` (people connected right now) back to away with no note. */
+  async resetPresenceExcept(keep: string[]): Promise<void> {
+    const q = this.repo.createQueryBuilder().update().set({ presence: 'away', presenceNote: null })
+      .where(`(presence <> 'away' OR presence_note IS NOT NULL)`)
+    if (keep.length) q.andWhere('user_id NOT IN (:...keep)', { keep })
+    await q.execute()
   }
 
   private async find(wsId: string, userId: string): Promise<Membership> {

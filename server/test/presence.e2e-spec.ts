@@ -1,5 +1,5 @@
 import type { Socket } from 'socket.io-client'
-import { PRESENCE_GRACE_MS } from '../src/realtime/presence.service'
+import { PRESENCE_GRACE_MS, PresenceService } from '../src/realtime/presence.service'
 import { MembersService } from '../src/workspaces/members.service'
 import type { Person } from '../src/workspaces/person'
 import { createTestApp, resetAll, type TestApp } from './utils/app'
@@ -144,5 +144,15 @@ describe('presence', () => {
     } finally {
       await fresh.app.close()
     }
+  })
+
+  it('the boot reset spares whoever is connected (another instance starting mid-session)', async () => {
+    await join()
+    const a = await connect(t, lin.token)
+    await t.db.query(`UPDATE memberships SET presence = 'online' WHERE user_id = $1`, [nia.user.id])
+    await t.app.get(PresenceService).onApplicationBootstrap()
+    expect(await presenceOf(lin.user.id)).toBe('online')
+    expect(await presenceOf(nia.user.id)).toBe('away')
+    expect(a.connected).toBe(true)
   })
 })
