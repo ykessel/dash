@@ -5,6 +5,7 @@ import type { Actor } from '../common/actor.decorator'
 import { CLOCK, type Clock } from '../common/clock'
 import { DomainEvents } from '../common/domain-events'
 import { AppError } from '../common/http-exception.filter'
+import { NoticeGate } from '../notices/notice-gate'
 import { forbidden } from '../workspaces/errors'
 import { UUID } from '../workspaces/workspace-member.guard'
 import { Subtask, Task, TaskComment } from './task.entity'
@@ -24,6 +25,7 @@ export class TaskPartsService {
     @InjectRepository(TaskComment) private readonly comments: Repository<TaskComment>,
     private readonly events: DomainEvents,
     @Inject(CLOCK) private readonly clock: Clock,
+    private readonly notices: NoticeGate,
   ) {}
 
   async addSubtask(wsId: string, taskId: string, title: string, actor: Actor): Promise<TaskView> {
@@ -57,11 +59,13 @@ export class TaskPartsService {
     return this.tasks.publish('task.updated', wsId, taskId, actor)
   }
 
-  async addComment(wsId: string, taskId: string, text: string, actor: Actor): Promise<CommentView> {
-    await this.tasks.find(wsId, taskId)
+  /** `mentions` are user ids; each one in the workspace (other than me) gets a notice. */
+  async addComment(wsId: string, taskId: string, text: string, actor: Actor, mentions: string[] = []): Promise<CommentView> {
+    const task = await this.tasks.find(wsId, taskId)
     const { identifiers } = await this.comments.insert({ taskId, authorId: actor.userId, body: text, createdAt: this.clock.now() })
     const comment = toCommentView(await this.comments.findOneByOrFail({ id: identifiers[0].id as string }))
     this.events.publish('comment.created', wsId, actor, { taskId, comment })
+    for (const who of new Set(mentions)) await this.notices.send(wsId, who, actor, 'mention', `mentioned you on “${task.title}”`)
     return comment
   }
 

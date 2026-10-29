@@ -7,6 +7,7 @@ import { isoDay } from '../common/dates'
 import { DomainEvents } from '../common/domain-events'
 import { type Priority, type Status, STATUSES } from '../common/enums'
 import { AppError } from '../common/http-exception.filter'
+import { NoticeGate } from '../notices/notice-gate'
 import { assertVersion } from '../common/version'
 import { WorkspaceRefs } from '../workspaces/refs.service'
 import { UUID } from '../workspaces/workspace-member.guard'
@@ -48,6 +49,7 @@ export class TasksService {
     private readonly refs: WorkspaceRefs,
     private readonly events: DomainEvents,
     @Inject(CLOCK) private readonly clock: Clock,
+    private readonly notices: NoticeGate,
   ) {}
 
   /** Live tasks, board order: by column (todo → done), then `order`. */
@@ -95,7 +97,9 @@ export class TasksService {
       await this.recordActivity({ id: taskId, workspaceId: wsId }, actor.userId, 'created', undefined, input.status, em)
       return taskId
     })
-    return this.publish('task.created', wsId, id, actor)
+    const view = await this.publish('task.created', wsId, id, actor)
+    if (assignee) await this.notices.send(wsId, assignee, actor, 'assigned', `assigned you “${view.title}”`)
+    return view
   }
 
   async update(wsId: string, id: string, patch: TaskPatch, actor: Actor): Promise<TaskView> {
@@ -120,7 +124,9 @@ export class TasksService {
       if (!res.affected) assertVersion(-1, version)
       if (moved) await this.recordActivity(task, actor.userId, 'status', task.status, status, em)
     })
-    return this.publish('task.updated', wsId, id, actor)
+    const view = await this.publish('task.updated', wsId, id, actor)
+    if (assignee && assignee !== task.assigneeId) await this.notices.send(wsId, assignee, actor, 'assigned', `assigned you “${view.title}”`)
+    return view
   }
 
   /** Soft delete: subtasks and comments stay so restore brings everything back. */
