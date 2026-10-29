@@ -26,6 +26,12 @@ export class UsersService {
     }))
   }
 
+  /** Name and avatar, the profile fields a person edits themselves. */
+  async updateProfile(id: string, patch: { name?: string; avatarSkin?: number }): Promise<User> {
+    if (patch.name !== undefined || patch.avatarSkin !== undefined) await this.repo.update({ id }, patch)
+    return this.repo.findOneByOrFail({ id })
+  }
+
   /** Keeps the first verification time if the address was already verified. */
   async markVerified(id: string): Promise<void> {
     await this.repo.createQueryBuilder().update()

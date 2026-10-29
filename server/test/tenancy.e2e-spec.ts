@@ -42,6 +42,11 @@ const routes: [Method, (ws: string, ctx: { otherId: string }) => string][] = [
   ['patch', ws => `/api/v1/workspaces/${ws}/events/${ANY}`],
   ['delete', ws => `/api/v1/workspaces/${ws}/events/${ANY}`],
   ['post', ws => `/api/v1/workspaces/${ws}/events/${ANY}/restore`],
+  ['get', ws => `/api/v1/workspaces/${ws}/notifications`],
+  ['post', ws => `/api/v1/workspaces/${ws}/notifications/read-all`],
+  ['post', ws => `/api/v1/workspaces/${ws}/focus-sessions`],
+  ['patch', ws => `/api/v1/workspaces/${ws}/focus-sessions/${ANY}`],
+  ['get', ws => `/api/v1/workspaces/${ws}/focus-sessions?from=2026-01-01&to=2026-01-31`],
 ]
 
 describe('tenant isolation', () => {

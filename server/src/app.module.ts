@@ -12,6 +12,9 @@ import { DbModule } from './db/db.module'
 import { HealthModule } from './health/health.module'
 import { MailModule } from './mail/mail.module'
 import { CalendarModule } from './calendar/calendar.module'
+import { FocusModule } from './focus/focus.module'
+import { NotificationsModule } from './notifications/notifications.module'
+import { PrefsModule } from './prefs/prefs.module'
 import { ProjectsModule } from './projects/projects.module'
 import { RealtimeModule } from './realtime/realtime.module'
 import { TasksModule } from './tasks/tasks.module'
@@ -35,6 +38,9 @@ import { WorkspacesModule } from './workspaces/workspaces.module'
     ProjectsModule,
     TasksModule,
     CalendarModule,
+    NotificationsModule,
+    FocusModule,
+    PrefsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: AppThrottlerGuard }],
 })

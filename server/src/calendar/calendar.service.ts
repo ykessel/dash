@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { Between, DataSource, In, IsNull, type Repository } from 'typeorm'
 import type { Actor } from '../common/actor.decorator'
 import { CLOCK, type Clock } from '../common/clock'
+import { assertRange } from '../common/dates'
 import { DomainEvents } from '../common/domain-events'
 import type { EventKind, Hue } from '../common/enums'
 import { AppError } from '../common/http-exception.filter'
@@ -26,8 +27,6 @@ export interface EventInput {
 export type EventPatch = Partial<EventInput>
 
 const eventNotFound = () => new AppError(404, 'event_not_found', 'That event doesn’t exist.')
-const DAY_MS = 86_400_000
-export const MAX_RANGE_DAYS = 366
 
 @Injectable()
 export class CalendarService {
@@ -42,9 +41,7 @@ export class CalendarService {
 
   /** Live events between two dates, both inclusive, at most a year apart. */
   async list(wsId: string, from: string, to: string): Promise<CalEventView[]> {
-    const days = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS
-    if (days < 0) throw new AppError(400, 'invalid', 'The range ends before it starts.', 'to')
-    if (days > MAX_RANGE_DAYS) throw new AppError(400, 'invalid', 'Ask for a year at most.', 'to')
+    assertRange(from, to)
     const rows = await this.events.find({
       where: { workspaceId: wsId, date: Between(from, to), deletedAt: IsNull() },
       order: { date: 'ASC', startMin: 'ASC', id: 'ASC' },
