@@ -524,6 +524,7 @@ select.input option { background: var(--glass-solid); color: var(--text); }
 .modal__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .modal__grid .full { grid-column: 1 / -1; }
 .mform__err { margin-top: 10px; color: var(--danger); font-size: 14px; font-weight: 560; animation: rise 0.35s var(--ease) backwards; }
+.mform__empty { margin: 14px 0 18px; color: var(--text-2); line-height: 1.5; }
 .grabber { display: none; }
 
 .round-btn {

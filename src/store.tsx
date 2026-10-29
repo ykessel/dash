@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { api, ApiError, API_URL, onSignedOut, refresh, setToken, type PublicUser } from './api/client'
 import { applyEvent } from './api/live'
-import { pickWorkspace, toAuthResult, type AuthResult, type WorkspaceRef } from './api/session'
+import { PendingIds, replaceById } from './api/pending'
+import { mergeWorkspaces, pickWorkspace, toAuthResult, type AuthResult, type WorkspaceRef } from './api/session'
 import { connectLive } from './api/socket'
 import { DATA_VERSION } from './data/seed'
 import type { CalEvent, Comment, Data, Look, Notice, Person, Project, Status, Task } from './data/types'
@@ -23,6 +24,24 @@ const write = (key: string, value: unknown) => {
   try { localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value)) } catch { /* ignore */ }
 }
 const readLastWs = () => { try { return localStorage.getItem(LAST_WS_KEY) } catch { return null } }
+
+/** An invite opened while signed out waits here (localStorage, so a magic link in another tab still finds it). */
+const INVITE_KEY = 'pane:invite'
+export const rememberInvite = (token: string) => write(INVITE_KEY, token)
+const takeInvite = () => {
+  try {
+    const t = localStorage.getItem(INVITE_KEY)
+    localStorage.removeItem(INVITE_KEY)
+    return t
+  } catch {
+    return null
+  }
+}
+
+/** Who an unassigned task (or a member who has left) shows as. */
+const NOBODY: Person = {
+  id: '', name: 'Unassigned', email: '', role: '', team: 'Product', city: '', tz: 'UTC', presence: 'away', capacity: 0, skin: 0,
+}
 
 const EMPTY: Data = {
   version: DATA_VERSION, me: '', people: [], projects: [], tasks: [], events: [], notices: [], focus: [],
@@ -63,6 +82,9 @@ interface Store {
   ready: boolean
   /** The current workspace's data has arrived. */
   loaded: boolean
+  /** Why the workspace couldn't load, if it couldn't. */
+  loadError: string | null
+  retryLoad: () => void
   data: Data
   me: Person
   look: Look
@@ -144,6 +166,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [workspaceId, setWorkspaceId] = useState<string | null>(null)
   const [data, setData] = useState<Data>(EMPTY)
   const [loaded, setLoaded] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [look, setLookState] = useState<Look>(() => readJson(LOOK_KEY, DEFAULT_LOOK))
   const [lastUser, setLastUser] = useState<LastUser | null>(() => {
     const u = readJson<LastUser | null>(LAST_USER_KEY, null)
@@ -161,8 +184,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   /** Team and role typed at sign-up, used for the first workspace. */
   const pendingTeam = useRef<{ team: Person['team']; title: string } | null>(null)
 
+  const [pending] = useState(() => new PendingIds())
+
   dataRef.current = data
   const ws = () => `/workspaces/${wsRef.current}`
+  /** Wraps response handlers so they only run while the workspace that was open at call time still is. */
+  const here = () => {
+    const id = wsRef.current
+    return <A extends unknown[]>(fn: (...a: A) => void) => (...a: A) => { if (wsRef.current === id) fn(...a) }
+  }
 
   const notify = useCallback((text: string, tone: Note['tone'] = 'ok', undo?: () => void) => {
     window.clearTimeout(noteTimer.current)
@@ -215,19 +245,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setWorkspaceId(id)
     write(LAST_WS_KEY, id)
     setLoaded(false)
+    setLoadError(null)
     setData(EMPTY)
     openDrawer(null)
     openModal(null)
-    loadSnapshot(id).catch(e => notify(message(e), 'warn'))
-  }, [loadSnapshot, notify])
+    loadSnapshot(id).catch(e => { if (wsRef.current === id) setLoadError(message(e)) })
+  }, [loadSnapshot])
 
-  /** A session exists: remember who, find (or make) a workspace, open it. */
+  const retryLoad = useCallback(() => {
+    if (wsRef.current) openWorkspace(wsRef.current)
+  }, [openWorkspace])
+
+  /**
+   * A session exists: accept an invite that was waiting for sign-in, find (or make) a workspace,
+   * then mark the person signed in and open it. Throws if the workspace list can't be had, so
+   * the caller stays signed out instead of spinning forever.
+   */
   const enter = useCallback(async (u: PublicUser, preferWs?: string) => {
-    setUser(u)
-    const last: LastUser = { name: u.name, email: u.email, skin: u.avatarSkin ?? 0 }
-    setLastUser(last)
-    write(LAST_USER_KEY, last)
     api<{ look: Partial<Look> }>('/me/prefs').then(p => setLookState(l => ({ ...l, ...p.look }))).catch(() => { /* keep local look */ })
+    let joined: WorkspaceRef | null = null
+    const invite = takeInvite()
+    if (invite) {
+      try {
+        joined = (await api<{ workspace: WorkspaceRef }>('/invitations/accept', { method: 'POST', body: { token: invite } })).workspace
+        notify(`You joined ${joined.name}`, 'ok')
+      } catch (e) {
+        if (!(e instanceof ApiError && e.code === 'already_member')) notify(message(e), 'warn')
+      }
+    }
     let list = await api<WorkspaceRef[]>('/me/workspaces')
     if (!list.length) {
       const first = u.name.split(' ')[0] || 'My'
@@ -238,10 +283,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       list = [made.workspace]
     }
     pendingTeam.current = null
-    setWorkspaces(list.map(w => ({ id: w.id, name: w.name })))
-    const id = pickWorkspace(list, preferWs ?? readLastWs())
+    // Merge, never replace: an accept that finished meanwhile may already have added its team.
+    setWorkspaces(have => mergeWorkspaces(have, list))
+    setUser(u)
+    const last: LastUser = { name: u.name, email: u.email, skin: u.avatarSkin ?? 0 }
+    setLastUser(last)
+    write(LAST_USER_KEY, last)
+    const id = pickWorkspace(list, joined?.id ?? preferWs ?? readLastWs())
     if (id) openWorkspace(id)
-  }, [openWorkspace])
+  }, [openWorkspace, notify])
 
   const leave = useCallback(() => {
     setToken(null)
@@ -251,6 +301,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setWorkspaces([])
     setData(EMPTY)
     setLoaded(false)
+    setLoadError(null)
     setFocus(null)
     openDrawer(null)
     openModal(null)
@@ -261,11 +312,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     let live = true
     refresh()
       .then(s => (s && live ? enter(s.user) : undefined))
-      .catch(() => { /* signed out */ })
+      .catch(e => { setToken(null); if (live) notify(message(e), 'warn') })
       .finally(() => live && setReady(true))
     const off = onSignedOut(() => leave())
     return () => { live = false; off() }
-  }, [enter, leave])
+  }, [enter, leave, notify])
 
   // Live updates for the open workspace; every (re)connect re-reads the snapshot to catch what was missed.
   useEffect(() => {
@@ -347,22 +398,48 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     id: user?.id ?? '', name: user?.name ?? '', email: user?.email ?? '', role: '', team: 'Product', city: '', tz: 'UTC',
     presence: 'online', capacity: 32, skin: user?.avatarSkin ?? 0,
   }), [user])
-  const person = useCallback((id: string) => data.people.find(p => p.id === id) ?? data.people[0] ?? fallbackMe, [data.people, fallbackMe])
+  const person = useCallback(
+    (id: string) => data.people.find(p => p.id === id) ?? (id && id === user?.id ? fallbackMe : NOBODY),
+    [data.people, fallbackMe, user],
+  )
   const project = useCallback((id: string) => data.projects.find(p => p.id === id) ?? data.projects[0], [data.projects])
   const me = useMemo(() => data.people.find(p => p.id === data.me) ?? fallbackMe, [data.people, data.me, fallbackMe])
 
+  /**
+   * A follow-up call on something that may still carry a temp id: waits for its create, then
+   * calls with the real id. The answer only lands if the same workspace is still open.
+   */
+  const follow = useCallback(<T,>(id: string, call: (base: string, real: string) => Promise<T>, then: (v: T, real: string) => void) => {
+    const keep = here()
+    const base = ws()
+    pending.real(id)
+      .then(real => (real ? call(base, real).then(keep((v: T) => then(v, real))) : undefined))
+      .catch(keep(resync))
+  }, [pending, resync]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** When a temp item gets its real id, an open drawer on it follows along. */
+  const renamed = (temp: string, real: string) => openDrawer(d => (d && d.id === temp ? { ...d, id: real } : d))
+
   /* ---- tasks ---- */
   const putTask = useCallback((t: Task, replaceId = t.id) => {
-    setData(d => ({ ...d, tasks: d.tasks.some(x => x.id === replaceId) ? d.tasks.map(x => (x.id === replaceId ? t : x)) : [t, ...d.tasks] }))
+    setData(d => ({ ...d, tasks: replaceById(d.tasks, t, replaceId, 'start') }))
   }, [])
 
   const addTask: Store['addTask'] = useCallback(t => {
     const temp: Task = { ...t, id: tempId('t'), order: -Date.now(), subtasks: [], comments: [], doneAt: t.status === 'done' ? todayIso() : undefined }
     setData(d => ({ ...d, tasks: [temp, ...d.tasks] }))
-    api<Task>(`${ws()}/tasks`, { method: 'POST', body: { ...pick(t, TASK_FIELDS), assignee: t.assignee || null } })
-      .then(real => putTask(real, temp.id), resync)
+    const keep = here()
+    const create = api<Task>(`${ws()}/tasks`, { method: 'POST', body: { ...pick(t, TASK_FIELDS), assignee: t.assignee || null } })
+      .then(real => {
+        keep(() => { putTask(real, temp.id); renamed(temp.id, real.id) })()
+        return real.id
+      }, e => {
+        keep(resync)(e)
+        return null
+      })
+    pending.track(temp.id, create)
     return temp
-  }, [putTask, resync])
+  }, [putTask, resync, pending]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const updateTask = useCallback((id: string, p: Partial<Task>) => {
     const cur = dataRef.current.tasks.find(t => t.id === id)
@@ -370,8 +447,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setData(d => ({ ...d, tasks: d.tasks.map(t => (t.id === id ? { ...t, ...p } : t)) }))
     const body = pick(p, TASK_FIELDS)
     if (!Object.keys(body).length) return
-    api<Task>(`${ws()}/tasks/${id}`, { method: 'PATCH', body: { ...body, version: cur.version } }).then(t => putTask(t), resync)
-  }, [putTask, resync])
+    // A task still being created is at version 1 when it lands.
+    follow(id, (base, real) => api<Task>(`${base}/tasks/${real}`, { method: 'PATCH', body: { ...body, version: cur.version ?? 1 } }), t => putTask(t))
+  }, [follow, putTask])
 
   const moveTask = useCallback((id: string, status: Status, beforeId?: string | null) => {
     setData(d => {
@@ -393,8 +471,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ),
       }
     })
-    api<Task>(`${ws()}/tasks/${id}/move`, { method: 'POST', body: { status, beforeId: beforeId ?? null } }).then(t => putTask(t), resync)
-  }, [putTask, resync])
+    follow(id, async (base, real) => {
+      // A neighbour that is itself still being created is named by its real id too.
+      const before = beforeId && beforeId !== 'top' ? await pending.real(beforeId) : beforeId ?? null
+      return api<Task>(`${base}/tasks/${real}/move`, { method: 'POST', body: { status, beforeId: before } })
+    }, t => putTask(t))
+  }, [follow, pending, putTask])
 
   const toggleDone = useCallback((id: string) => {
     const before = dataRef.current.tasks.find(t => t.id === id)
@@ -408,89 +490,98 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const removed = dataRef.current.tasks.find(t => t.id === id)
     if (!removed) return
     setData(d => ({ ...d, tasks: d.tasks.filter(t => t.id !== id) }))
-    api(`${ws()}/tasks/${id}`, { method: 'DELETE' }).then(() => {
-      notify('Task deleted', 'warn', () => {
-        api<Task>(`${ws()}/tasks/${id}/restore`, { method: 'POST' }).then(t => putTask(t), resync)
-      })
-    }, resync)
-  }, [notify, putTask, resync])
+    follow(id, (base, real) => api(`${base}/tasks/${real}`, { method: 'DELETE' }), (_, real) => {
+      notify('Task deleted', 'warn', () => follow(real, (base, r) => api<Task>(`${base}/tasks/${r}/restore`, { method: 'POST' }), t => putTask(t)))
+    })
+  }, [follow, notify, putTask])
 
   const addSubtask = useCallback((taskId: string, title: string) => {
     setData(d => ({ ...d, tasks: d.tasks.map(t => (t.id === taskId ? { ...t, subtasks: [...t.subtasks, { id: tempId('s'), title, done: false }] } : t)) }))
-    api<Task>(`${ws()}/tasks/${taskId}/subtasks`, { method: 'POST', body: { title } }).then(t => putTask(t), resync)
-  }, [putTask, resync])
+    follow(taskId, (base, real) => api<Task>(`${base}/tasks/${real}/subtasks`, { method: 'POST', body: { title } }), t => putTask(t))
+  }, [follow, putTask])
 
   const toggleSubtask = useCallback((taskId: string, sid: string) => {
     const sub = dataRef.current.tasks.find(t => t.id === taskId)?.subtasks.find(s => s.id === sid)
-    if (!sub) return
+    // A subtask still being added has no id the API knows yet.
+    if (!sub || sid.startsWith('tmp-')) return
     setData(d => ({ ...d, tasks: d.tasks.map(t => (t.id === taskId ? { ...t, subtasks: t.subtasks.map(s => (s.id === sid ? { ...s, done: !s.done } : s)) } : t)) }))
-    api<Task>(`${ws()}/tasks/${taskId}/subtasks/${sid}`, { method: 'PATCH', body: { done: !sub.done } }).then(t => putTask(t), resync)
-  }, [putTask, resync])
+    follow(taskId, (base, real) => api<Task>(`${base}/tasks/${real}/subtasks/${sid}`, { method: 'PATCH', body: { done: !sub.done } }), t => putTask(t))
+  }, [follow, putTask])
 
   const addComment = useCallback((taskId: string, text: string, mentions: string[] = []) => {
     const temp: Comment = { id: tempId('c'), who: dataRef.current.me, text, at: Date.now() }
     setData(d => ({ ...d, tasks: d.tasks.map(t => (t.id === taskId ? { ...t, comments: [...t.comments, temp] } : t)) }))
-    api<Comment>(`${ws()}/tasks/${taskId}/comments`, { method: 'POST', body: { text, mentions } }).then(c => {
-      setData(d => ({ ...d, tasks: d.tasks.map(t => (t.id === taskId ? { ...t, comments: t.comments.map(x => (x.id === temp.id ? c : x)) } : t)) }))
-    }, resync)
-  }, [resync])
+    follow(taskId, (base, real) => api<Comment>(`${base}/tasks/${real}/comments`, { method: 'POST', body: { text, mentions } }), (c, real) => {
+      setData(d => ({ ...d, tasks: d.tasks.map(t => (t.id === real ? { ...t, comments: replaceById(t.comments, c, temp.id, 'end') } : t)) }))
+    })
+  }, [follow])
 
   /* ---- events ---- */
   const putEvent = useCallback((e: CalEvent, replaceId = e.id) => {
-    setData(d => ({ ...d, events: d.events.some(x => x.id === replaceId) ? d.events.map(x => (x.id === replaceId ? e : x)) : [...d.events, e] }))
+    setData(d => ({ ...d, events: replaceById(d.events, e, replaceId, 'end') }))
   }, [])
 
   const addEvent = useCallback((e: Omit<CalEvent, 'id'>) => {
     const temp: CalEvent = { ...e, id: tempId('e') }
     setData(d => ({ ...d, events: [...d.events, temp] }))
-    api<CalEvent>(`${ws()}/events`, { method: 'POST', body: { ...e, project: e.project ?? null } }).then(real => putEvent(real, temp.id), resync)
-  }, [putEvent, resync])
+    const keep = here()
+    const create = api<CalEvent>(`${ws()}/events`, { method: 'POST', body: { ...e, project: e.project ?? null } })
+      .then(real => {
+        keep(() => { putEvent(real, temp.id); renamed(temp.id, real.id) })()
+        return real.id
+      }, err => {
+        keep(resync)(err)
+        return null
+      })
+    pending.track(temp.id, create)
+  }, [putEvent, resync, pending]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const removeEvent = useCallback((id: string) => {
     setData(d => ({ ...d, events: d.events.filter(e => e.id !== id) }))
-    api(`${ws()}/events/${id}`, { method: 'DELETE' }).then(() => {
-      notify('Event removed', 'warn', () => {
-        api<CalEvent>(`${ws()}/events/${id}/restore`, { method: 'POST' }).then(e => putEvent(e), resync)
-      })
-    }, resync)
-  }, [notify, putEvent, resync])
+    follow(id, (base, real) => api(`${base}/events/${real}`, { method: 'DELETE' }), (_, real) => {
+      notify('Event removed', 'warn', () => follow(real, (base, r) => api<CalEvent>(`${base}/events/${r}/restore`, { method: 'POST' }), e => putEvent(e)))
+    })
+  }, [follow, notify, putEvent])
 
   /* ---- projects ---- */
   const putProject = useCallback((p: Project) => {
-    setData(d => ({ ...d, projects: d.projects.some(x => x.id === p.id) ? d.projects.map(x => (x.id === p.id ? p : x)) : [...d.projects, p] }))
+    setData(d => ({ ...d, projects: replaceById(d.projects, p, p.id, 'end') }))
   }, [])
 
   const addProject: Store['addProject'] = useCallback(async p => {
+    const keep = here()
     try {
       const real = await api<Project>(`${ws()}/projects`, { method: 'POST', body: p })
-      putProject(real)
+      keep(putProject)(real)
       return real
     } catch (e) {
       notify(message(e), 'warn')
       return null
     }
-  }, [putProject, notify])
+  }, [putProject, notify]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const updateProject = useCallback((id: string, p: Partial<Project>) => {
     const cur = dataRef.current.projects.find(x => x.id === id)
     if (!cur) return
     setData(d => ({ ...d, projects: d.projects.map(x => (x.id === id ? { ...x, ...p } : x)) }))
+    const keep = here()
+    const base = ws()
     const calls: Promise<unknown>[] = []
     if (p.pinned !== undefined || p.starred !== undefined) {
-      calls.push(api(`${ws()}/projects/${id}/prefs`, { method: 'PUT', body: { pinned: p.pinned, starred: p.starred } }))
+      calls.push(api(`${base}/projects/${id}/prefs`, { method: 'PUT', body: { pinned: p.pinned, starred: p.starred } }))
     }
     if (p.milestones) {
       for (const m of p.milestones) {
         const was = cur.milestones.find(x => x.id === m.id)
-        if (was && was.done !== m.done) calls.push(api(`${ws()}/projects/${id}/milestones/${m.id}`, { method: 'PATCH', body: { done: m.done } }))
+        if (was && was.done !== m.done) calls.push(api(`${base}/projects/${id}/milestones/${m.id}`, { method: 'PATCH', body: { done: m.done } }))
       }
     }
     const fields = pick(p, PROJECT_FIELDS)
     if (Object.keys(fields).length) {
-      calls.push(api<Project>(`${ws()}/projects/${id}`, { method: 'PATCH', body: { ...fields, version: cur.version } }))
+      calls.push(api<Project>(`${base}/projects/${id}`, { method: 'PATCH', body: { ...fields, version: cur.version } }))
     }
-    Promise.all(calls).catch(resync)
-  }, [resync])
+    Promise.all(calls).catch(keep(resync))
+  }, [resync]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const invite = useCallback(async (_name: string, email: string, team: Person['team'], role: string) => {
     try {
@@ -520,6 +611,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await enter(s.user)
       return { ok: true }
     } catch (e) {
+      setToken(null)
       return toAuthResult(e)
     }
   }, [enter])
@@ -554,16 +646,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const r = await ask('/auth/verify-email', { token: via.verify })
       if (!r.ok || user) return r
     }
+    // Back from Google/GitHub: boot's refresh may already have signed us in.
+    else if (user) return { ok: true }
     const s = await refresh()
-    if (!s) return { ok: false, field: 'email', error: 'That sign-in didn’t finish. Try again.' }
-    await enter(s.user)
-    return { ok: true }
+    // A confirmed email opened on another device has no session here; it still worked.
+    if (!s) return via.verify ? { ok: true } : { ok: false, field: 'email', error: 'That sign-in didn’t finish. Try again.' }
+    try {
+      await enter(s.user)
+      return { ok: true }
+    } catch (e) {
+      setToken(null)
+      return toAuthResult(e)
+    }
   }, [session, ask, enter, user])
 
   const acceptInvite = useCallback(async (token: string): Promise<AuthResult> => {
     try {
       const r = await api<{ workspace: WorkspaceRef }>('/invitations/accept', { method: 'POST', body: { token } })
-      setWorkspaces(list => (list.some(w => w.id === r.workspace.id) ? list : [...list, { id: r.workspace.id, name: r.workspace.name }]))
+      setWorkspaces(list => mergeWorkspaces(list, [r.workspace]))
       openWorkspace(r.workspace.id)
       return { ok: true }
     } catch (e) {
@@ -577,7 +677,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [leave])
 
   const value: Store = {
-    ready, loaded, data, me, look, setLook, person, project,
+    ready, loaded, loadError, retryLoad, data, me, look, setLook, person, project,
     workspaces, workspaceId, switchWorkspace, acceptInvite,
     addTask, updateTask, moveTask, toggleDone, removeTask, addSubtask, toggleSubtask, addComment,
     addEvent, removeEvent, addProject, updateProject, invite, markAllRead, setPrefs,

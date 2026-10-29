@@ -74,15 +74,26 @@ function Field({ label, children, full }: { label: string; children: ReactNode; 
 }
 
 function TaskForm({ preset, onDone }: { preset?: Partial<import('../data/types').Task>; onDone: () => void }) {
-  const { data, me, addTask, notify } = useStore()
+  const { data, me, addTask, notify, openModal } = useStore()
   const [title, setTitle] = useState(preset?.title ?? '')
-  const [projectId, setProject] = useState(preset?.project ?? data.projects[0].id)
+  const [projectId, setProject] = useState(preset?.project ?? data.projects[0]?.id ?? '')
   const [assignee, setAssignee] = useState(preset?.assignee ?? me.id)
   const [priority, setPriority] = useState<Priority>(preset?.priority ?? 'medium')
   const [due, setDue] = useState(preset?.due ?? offset(2))
   const [status, setStatus] = useState<Status>(preset?.status ?? 'todo')
   const [estimate, setEstimate] = useState(preset?.estimate ?? 2)
   const [err, setErr] = useState(false)
+
+  // A brand-new workspace has no projects yet, and every task belongs to one.
+  if (!data.projects.length) {
+    return (
+      <div className="mform">
+        <FormHead title="New task" onClose={onDone} submit={null} />
+        <p className="mform__empty">Tasks live in projects. Create your first project, then add tasks to it.</p>
+        <button type="button" className="btn btn--primary" onClick={() => openModal({ kind: 'project' })}>New project</button>
+      </div>
+    )
+  }
 
   const submit = (e: FormEvent) => {
     e.preventDefault()

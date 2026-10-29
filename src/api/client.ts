@@ -20,19 +20,12 @@ export interface PublicUser {
   avatarSkin?: number
 }
 
-/** This tab's id: the API skips echoing our own changes back to us over the socket. */
-export const clientId: string = (() => {
-  const key = 'pane:client-id'
-  try {
-    const have = sessionStorage.getItem(key)
-    if (have) return have
-    const id = Math.random().toString(36).slice(2, 12)
-    sessionStorage.setItem(key, id)
-    return id
-  } catch {
-    return Math.random().toString(36).slice(2, 12)
-  }
-})()
+/**
+ * This page's id: the API skips echoing our own changes back to us over the socket. Kept in
+ * memory, not sessionStorage, because a duplicated tab copies sessionStorage and the two tabs
+ * would then mute each other.
+ */
+export const clientId: string = Math.random().toString(36).slice(2, 12)
 
 let token: string | null = null
 const signedOut = new Set<() => void>()

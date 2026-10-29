@@ -20,21 +20,17 @@ const GO_KEYS: Record<string, RouteName> = { h: 'home', t: 'tasks', c: 'calendar
 
 export function App() {
   const route = useRoute()
-  const { openModal, startFocus, setLook, modal, drawer, finder, signedIn, ready, loaded } = useStore()
+  const { openModal, startFocus, setLook, modal, drawer, finder, signedIn, ready, loaded, loadError, retryLoad, signOut } = useStore()
   const isAuth = AUTH_ROUTES.includes(route.name)
 
   // Auth gate: signed-out visitors land on Sign in; signed-in users skip it (except link pages,
-  // which finish on their own). An invite opened while signed out resumes after sign-in.
+  // which finish on their own). An invite opened while signed out is accepted by sign-in itself.
   useEffect(() => {
     if (!ready) return
     // Read the hash itself: a redirect may already be on its way (e.g. to "signed out").
     const target = location.hash.replace(/^#\/?/, '').split(/[/?]/)[0] as RouteName
     if (!signedIn && !AUTH_ROUTES.includes(target)) go('signin')
-    else if (signedIn && isAuth && !LINK_ROUTES.includes(target)) {
-      let invite: string | null = null
-      try { invite = sessionStorage.getItem('pane:invite'); sessionStorage.removeItem('pane:invite') } catch { /* ignore */ }
-      go(invite ? `invite?token=${encodeURIComponent(invite)}` : 'home')
-    }
+    else if (signedIn && isAuth && !LINK_ROUTES.includes(target)) go('home')
   }, [signedIn, isAuth, ready])
 
   // Scroll to top when the page changes.
@@ -89,6 +85,23 @@ export function App() {
     window.addEventListener('keydown', on)
     return () => window.removeEventListener('keydown', on)
   }, [openModal, startFocus, setLook, modal, drawer, finder, signedIn])
+
+  if (signedIn && !loaded && !isAuth && loadError) {
+    return (
+      <>
+        <Wallpaper />
+        <div className="boot boot--error" role="alert">
+          <h1>Your workspace didn’t load</h1>
+          <p>{loadError}</p>
+          <div className="boot__actions">
+            <button type="button" className="btn btn--primary" onClick={retryLoad}>Try again</button>
+            <button type="button" className="btn btn--glass" onClick={signOut}>Sign out</button>
+          </div>
+        </div>
+        <Island />
+      </>
+    )
+  }
 
   if (!ready || (signedIn && !loaded && !isAuth)) {
     return (

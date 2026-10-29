@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ApiError } from './client'
-import { pickWorkspace, toAuthResult } from './session'
+import { mergeWorkspaces, pickWorkspace, toAuthResult } from './session'
 
 describe('toAuthResult', () => {
   it('keeps the field the API named', () => {
@@ -23,4 +23,11 @@ describe('pickWorkspace', () => {
   it('keeps the last one when it is still mine', () => expect(pickWorkspace(list, 'b')).toBe('b'))
   it('falls back to the first', () => expect(pickWorkspace(list, 'gone')).toBe('a'))
   it('null when I have none', () => expect(pickWorkspace([], 'a')).toBeNull())
+})
+
+describe('mergeWorkspaces', () => {
+  it('keeps what I had, renames, and adds the new ones at the end', () => {
+    expect(mergeWorkspaces([{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }], [{ id: 'b', name: 'B2' }, { id: 'c', name: 'C' }]))
+      .toEqual([{ id: 'a', name: 'A' }, { id: 'b', name: 'B2' }, { id: 'c', name: 'C' }])
+  })
 })

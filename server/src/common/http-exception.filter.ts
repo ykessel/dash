@@ -18,6 +18,13 @@ export class AppError extends HttpException {
   }
 }
 
+/** Ends a browser navigation (not an XHR) by sending it somewhere else instead of a JSON error. */
+export class RedirectError extends HttpException {
+  constructor(readonly url: string) {
+    super('Redirect', HttpStatus.FOUND)
+  }
+}
+
 const CODES: Record<number, string> = {
   400: 'bad_request',
   401: 'unauthorized',
@@ -34,6 +41,10 @@ export class AppExceptionFilter implements ExceptionFilter {
 
   catch(err: unknown, host: ArgumentsHost) {
     const res = host.switchToHttp().getResponse<Response>()
+    if (err instanceof RedirectError) {
+      res.redirect(302, err.url)
+      return
+    }
     if (err instanceof AppError) {
       res.status(err.getStatus()).json({ code: err.code, message: err.message, ...(err.field ? { field: err.field } : {}) })
       return

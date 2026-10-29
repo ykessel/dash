@@ -86,4 +86,12 @@ describe('api client', () => {
     await expect(c.api('/boom')).rejects.toMatchObject({ status: 500, code: 'unknown' })
     await expect(c.api('/bad')).rejects.toBeInstanceOf(c.ApiError)
   })
+
+  it('a duplicated tab gets its own client id', async () => {
+    vi.stubGlobal('sessionStorage', { getItem: () => 'copied-from-the-other-tab', setItem: () => undefined })
+    const a = await load()
+    const b = await load()
+    expect(a.clientId).not.toBe('copied-from-the-other-tab')
+    expect(a.clientId).not.toBe(b.clientId)
+  })
 })

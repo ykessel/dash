@@ -4,7 +4,7 @@ import { BrandMark, Icon } from '../components/Icon'
 import { Avatar, Seg } from '../components/ui'
 import type { Person, Team } from '../data/types'
 import { go, type Route, type RouteName } from '../lib/router'
-import { useStore, type AuthResult } from '../store'
+import { rememberInvite, useStore, type AuthResult } from '../store'
 
 /* Sign-in, sign-up, signed-out and link screens, built from the app's glass,
    gel buttons, fields and motion, talking to the Pane API. */
@@ -120,8 +120,8 @@ function useSubmit() {
 /** Messages for the `?error=` codes OAuth and expired links send back. */
 const LINK_ERRORS: Record<string, string> = {
   oauth_failed: 'That sign-in didn’t finish. Try again.',
-  oauth_email_unverified: 'Verify that email with the provider first, then try again.',
-  email_unverified: 'Verify your email with Pane first, then link the provider.',
+  email_unverified: 'That account has no verified email with the provider. Verify it there, or sign in with email.',
+  account_exists_unverified: 'An account with this email exists but isn’t verified. Sign in with your password or a magic link first.',
   provider_disabled: 'That sign-in option isn’t set up yet.',
 }
 
@@ -339,8 +339,8 @@ function LinkLanding({ route, step, query }: { route: RouteName; step?: string; 
     }
     if (route === 'invite') {
       if (!signedIn) {
-        // Remember the invite through sign-in; App sends us back here afterwards.
-        try { sessionStorage.setItem('pane:invite', token) } catch { /* ignore */ }
+        // Remember the invite through sign-in; signing in accepts it.
+        rememberInvite(token)
         go('signin')
         return
       }

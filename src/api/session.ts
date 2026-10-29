@@ -18,3 +18,10 @@ export function toAuthResult(e: unknown): Extract<AuthResult, { ok: false }> {
 export function pickWorkspace(list: WorkspaceRef[], lastId: string | null): string | null {
   return list.find(w => w.id === lastId)?.id ?? list[0]?.id ?? null
 }
+
+/** My workspace list after learning about `more`: same order, fresh names, new ones last. */
+export function mergeWorkspaces(have: WorkspaceRef[], more: WorkspaceRef[]): WorkspaceRef[] {
+  const out = have.map(w => more.find(m => m.id === w.id) ?? w)
+  for (const m of more) if (!out.some(w => w.id === m.id)) out.push(m)
+  return out.map(w => ({ id: w.id, name: w.name }))
+}

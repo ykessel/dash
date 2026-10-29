@@ -101,9 +101,10 @@ describe('OAuth start without provider credentials', () => {
   beforeAll(async () => { t = await createTestApp() })
   afterAll(() => t.app.close())
 
-  it('answers 404 provider_disabled', async () => {
-    const res = await t.http.get('/api/v1/auth/google').expect(404)
-    expect(res.body.code).toBe('provider_disabled')
-    await t.http.get('/api/v1/auth/github').expect(404)
+  it('sends the browser back to sign-in with provider_disabled', async () => {
+    for (const p of ['google', 'github']) {
+      const res = await t.http.get(`/api/v1/auth/${p}`).expect(302)
+      expect(res.headers.location).toBe('http://localhost:5173/#/signin?error=provider_disabled')
+    }
   })
 })
