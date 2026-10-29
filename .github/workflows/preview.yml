@@ -50,14 +50,22 @@ jobs:
         # Fetch the URLs here and mask them before anything can echo them.
         run: |
           node .github/scripts/check-preview-env.mjs
-          neon() { npx --yes neonctl@2 connection-string "$BRANCH" --project-id "$NEON_PROJECT_ID"             --database-name neondb --role-name neondb_owner "$@"; }
+          neon() { npx --yes neonctl@2 connection-string "$BRANCH" --project-id "$NEON_PROJECT_ID" \
+            --database-name neondb --role-name neondb_owner "$@"; }
           pooled=$(neon --pooled)
           direct=$(neon)
           pw=$(node -e 'console.log(new URL(process.argv[1]).password)' "$direct")
           echo "::add-mask::$pw"
           echo "::add-mask::$pooled"
           echo "::add-mask::$direct"
-          flyctl secrets set --app "$APP" --stage             DATABASE_URL="$pooled"             DATABASE_URL_DIRECT="$direct"             JWT_SECRET="$JWT_SECRET_IN"             SMTP_URL="$SMTP_URL_IN"             MAIL_FROM="$MAIL_FROM_IN"             APP_URL="https://$APP.fly.dev"             API_URL="https://$APP.fly.dev"
+          flyctl secrets set --app "$APP" --stage \
+            DATABASE_URL="$pooled" \
+            DATABASE_URL_DIRECT="$direct" \
+            JWT_SECRET="$JWT_SECRET_IN" \
+            SMTP_URL="$SMTP_URL_IN" \
+            MAIL_FROM="$MAIL_FROM_IN" \
+            APP_URL="https://$APP.fly.dev" \
+            API_URL="https://$APP.fly.dev"
       - name: Deploy
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
