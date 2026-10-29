@@ -151,4 +151,47 @@ describe('insights', () => {
       expect(r.byProject).toEqual([])
     })
   })
+
+  describe('load today', () => {
+    it('workload is open hours per member against capacity, most loaded first', async () => {
+      await t.db.query(`UPDATE memberships SET capacity = 10 WHERE user_id = $1`, [nia.user.id])
+      await task('l1', { assignee: lin.user.id, estimate: 8 })
+      await task('l2', { assignee: lin.user.id, estimate: 4.5 })
+      const done = await task('l3', { assignee: lin.user.id, estimate: 20 })
+      await finishedAt(t, done.id, lin.user.id, daysAgo(0))
+      const gone = await task('l4', { assignee: lin.user.id, estimate: 50 })
+      await t.http.delete(`${base}/tasks/${gone.id}`).set(lin.auth).expect(204)
+      await task('n1', { assignee: nia.user.id, estimate: 6 })
+      await task('nobody', { estimate: 9 })
+      expect((await insights()).workload).toEqual([
+        { person: nia.user.id, openHours: 6, capacity: 10 },
+        { person: lin.user.id, openHours: 12.5, capacity: 32 },
+      ])
+    })
+
+    it('a member with nothing open shows 0 hours', async () => {
+      expect((await insights()).workload).toEqual(expect.arrayContaining([{ person: nia.user.id, openHours: 0, capacity: 32 }]))
+    })
+
+    it('stale lists the 3 open tasks quiet the longest, in days since their last activity', async () => {
+      const ten = await task('ten')
+      const three = await task('three')
+      const moved = await task('moved')
+      const five = await task('five')
+      const done = await task('done')
+      await createdAt(t, ten.id, daysAgo(10))
+      await createdAt(t, three.id, daysAgo(3))
+      await createdAt(t, moved.id, daysAgo(20))
+      await t.db.query(`INSERT INTO task_activity (task_id, workspace_id, actor_id, kind, from_status, to_status, at) VALUES ($1, $2, $3, 'status', 'todo', 'progress', $4)`, [moved.id, wsA, lin.user.id, daysAgo(1)])
+      await t.db.query(`UPDATE tasks SET status = 'progress' WHERE id = $1`, [moved.id])
+      await createdAt(t, five.id, daysAgo(5))
+      await createdAt(t, done.id, daysAgo(30))
+      await finishedAt(t, done.id, lin.user.id, daysAgo(29))
+      expect((await insights()).stale).toEqual([
+        { task: ten.id, days: 10 },
+        { task: five.id, days: 5 },
+        { task: three.id, days: 3 },
+      ])
+    })
+  })
 })

@@ -21,6 +21,8 @@ export interface Series {
 export interface OnTime { total: number; late: number; rate: number | null }
 export interface Cycle { avgDays: number | null; previousAvgDays: number | null }
 export interface ProjectShare { project: string; finished: number }
+export interface Workload { person: string; openHours: number; capacity: number }
+export interface Stale { task: string; days: number }
 
 /** Hours to one decimal, from whole seconds (integer maths, so 0.25 h rounds to 0.3). */
 const hours = (sec: number) => Math.round(sec / 360) / 10
@@ -112,6 +114,28 @@ export class InsightsService {
       cycle: { avgDays, previousAvgDays },
       byProject,
     }
+  }
+
+  /** Today's state, whatever the range: open hours per member and the open tasks quiet the longest. */
+  async load(wsId: string, w: Window): Promise<{ workload: Workload[]; stale: Stale[] }> {
+    const workload: Workload[] = await this.ds.query(
+      `SELECT m.user_id AS person, coalesce(sum(t.estimate), 0)::float8 AS "openHours", m.capacity
+       FROM memberships m
+       LEFT JOIN tasks t ON t.assignee_id = m.user_id AND t.workspace_id = m.workspace_id
+         AND t.deleted_at IS NULL AND t.status <> 'done'
+       WHERE m.workspace_id = $1
+       GROUP BY m.user_id, m.capacity
+       ORDER BY coalesce(sum(t.estimate), 0) / greatest(m.capacity, 1) DESC, m.user_id`,
+      [wsId],
+    )
+    const stale: Stale[] = await this.ds.query(
+      `SELECT t.id AS task, ($3::date - (max(a.at) AT TIME ZONE $2)::date)::int AS days
+       FROM tasks t JOIN task_activity a ON a.task_id = t.id
+       WHERE t.workspace_id = $1 AND t.deleted_at IS NULL AND t.status <> 'done'
+       GROUP BY t.id ORDER BY days DESC, t.id LIMIT 3`,
+      [wsId, w.tz, w.today],
+    )
+    return { workload, stale }
   }
 }
 
