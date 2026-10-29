@@ -1,5 +1,6 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common'
-import type { Response } from 'express'
+import type { Request, Response } from 'express'
+import type { ErrorReporter } from '../observability/reporter'
 
 /** Form fields an error can point at; anything else is reported without a field. */
 export const ERROR_FIELDS = [
@@ -39,6 +40,8 @@ const CODES: Record<number, string> = {
 export class AppExceptionFilter implements ExceptionFilter {
   private readonly log = new Logger('Error')
 
+  constructor(private readonly report?: ErrorReporter) {}
+
   catch(err: unknown, host: ArgumentsHost) {
     const res = host.switchToHttp().getResponse<Response>()
     if (err instanceof RedirectError) {
@@ -59,6 +62,9 @@ export class AppExceptionFilter implements ExceptionFilter {
       return
     }
     this.log.error(err)
+    const req = host.switchToHttp().getRequest<Request & { id?: string }>()
+    // Only where and which request: the query string, body and cookies may hold secrets.
+    this.report?.(err, { method: req.method, path: req.originalUrl.split('?')[0], requestId: req.id })
     res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ code: 'internal', message: 'Something went wrong.' })
   }
 }

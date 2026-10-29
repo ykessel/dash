@@ -1,3 +1,4 @@
+import './instrument'
 import 'reflect-metadata'
 import type { INestApplication } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
@@ -6,10 +7,12 @@ import type { NestExpressApplication } from '@nestjs/platform-express'
 import cookieParser from 'cookie-parser'
 import type { Express } from 'express'
 import helmet from 'helmet'
+import { Logger } from 'nestjs-pino'
 import { AppModule } from './app.module'
 import { AppIoAdapter } from './realtime/io.adapter'
 import { AppExceptionFilter } from './common/http-exception.filter'
 import type { Env } from './config/env'
+import { ERROR_REPORTER, type ErrorReporter } from './observability/reporter'
 
 /** Shared by main() and the e2e harness so tests run the same pipeline as production. */
 export function configureApp(app: INestApplication) {
@@ -38,11 +41,12 @@ export function configureApp(app: INestApplication) {
   if (web) (app as NestExpressApplication).useStaticAssets(web)
   app.useWebSocketAdapter(new AppIoAdapter(app, config.get('APP_URL', { infer: true })))
   app.use(cookieParser())
-  app.useGlobalFilters(new AppExceptionFilter())
+  app.useLogger(app.get(Logger))
+  app.useGlobalFilters(new AppExceptionFilter(app.get<ErrorReporter>(ERROR_REPORTER)))
 }
 
 async function main() {
-  const app = await NestFactory.create(AppModule)
+  const app = await NestFactory.create(AppModule, { bufferLogs: true })
   configureApp(app)
   // Fly stops machines with SIGINT/SIGTERM: close sockets and the DB pool cleanly.
   app.enableShutdownHooks()
