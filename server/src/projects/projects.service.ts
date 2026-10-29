@@ -180,10 +180,7 @@ export class ProjectsService {
     return m
   }
 
-  /** Postgres resolves every table a query names up front, so the tasks check runs only once that table exists. */
   private async hasLiveTasks(projectId: string): Promise<boolean> {
-    const [{ exists }] = await this.ds.query(`SELECT to_regclass('public.tasks') IS NOT NULL AS exists`)
-    if (!exists) return false
     const [{ busy }] = await this.ds.query(`SELECT EXISTS (SELECT 1 FROM tasks WHERE project_id = $1 AND deleted_at IS NULL) AS busy`, [projectId])
     return busy
   }
