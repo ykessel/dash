@@ -9,7 +9,7 @@ Because frontend and API share an origin, the refresh cookie's `SameSite=Lax` wo
 | Piece | Where | Why |
 | --- | --- | --- |
 | App | Fly.io (`fly.toml`), at least one machine always running | WebSockets and the reminder timer need a live process |
-| Database | Neon Postgres 16 | Pooled URL for the app, direct URL for migrations |
+| Database | Neon Postgres 18 | Pooled URL for the app, direct URL for migrations |
 | Previews | One Fly app plus one Neon branch per PR (`.github/workflows/preview.yml`) | Removed when the PR closes |
 | Errors | Sentry (`SENTRY_DSN`) | Only unexpected 500s; no bodies, cookies, headers, query strings, IPs or local variables (`observability/sentry.ts`) |
 | Logs | JSON on stdout (pino), read with `fly logs` or a log drain | Credentials are redacted |
@@ -24,7 +24,7 @@ Set non-secret values in `fly.toml [env]`. Set everything else with `fly secrets
 | `DATABASE_URL` | yes | Neon **pooled** connection string (`…-pooler…`) |
 | `DATABASE_URL_DIRECT` | yes | Neon direct connection string. Migrations use it (`release_command`). |
 | `JWT_SECRET` | yes | 48+ random characters, e.g. `openssl rand -base64 48` |
-| `APP_URL`, `API_URL` | yes | Both the public origin: `https://dash.fly.dev` (or your own domain later) |
+| `APP_URL`, `API_URL` | yes | Both the public origin: `https://dashapp.fly.dev` (or your own domain later) |
 | `SMTP_URL`, `MAIL_FROM` | yes | Transactional mail provider (Postmark, Resend, SES…) |
 | `COOKIE_SECURE` | yes | `true` (set in `fly.toml`) |
 | `GOOGLE_CLIENT_ID/SECRET`, `GITHUB_CLIENT_ID/SECRET` | no | OAuth apps. The callback is `{API_URL}/api/v1/auth/{google,github}/callback`. Leave them unset and the buttons answer "isn't set up yet". |
@@ -38,13 +38,13 @@ Set non-secret values in `fly.toml [env]`. Set everything else with `fly secrets
 Nothing in the repository creates accounts or spends money.
 
 1. **Neon.**
-   - Create a project (Postgres 16, region close to Fly's).
-   - Copy the pooled and direct connection strings of the `main` branch.
-   - Create a branch named **`preview`** from `main` *before any customer data exists*, or reset it to seed data. Previews branch from it, and preview URLs are public. Previews connect as `neondb_owner` to the `neondb` database (the Neon defaults); change both in `preview.yml` if yours differ.
+   - Create a project (Postgres 18, aws-us-east-2, next to Fly `ord`).
+   - Copy the pooled and direct connection strings of the default branch (`production`).
+   - Create a branch named **`preview`** from `production` *before any customer data exists*, or reset it to seed data. Previews branch from it, and preview URLs are public. Previews connect as `neondb_owner` to the `neondb` database (the Neon defaults); change both in `preview.yml` if yours differ.
 2. **Fly.**
    - `fly launch --no-deploy --copy-config` (keep the app name or edit `fly.toml`).
    - `fly secrets set DATABASE_URL=… DATABASE_URL_DIRECT=… JWT_SECRET=… APP_URL=https://… API_URL=https://… SMTP_URL=… MAIL_FROM=…`
-3. **Domain.** The app starts on `https://dash.fly.dev`. For your own domain later:
+3. **Domain.** The app starts on `https://dashapp.fly.dev`. For your own domain later:
    - `fly certs add app.example.com`, then create the DNS records it prints.
    - Set `APP_URL`/`API_URL` to that origin.
 4. **Sentry.**
@@ -64,7 +64,7 @@ Nothing in the repository creates accounts or spends money.
    - Create the environments `preview` and `production`. Add a required reviewer to `production` if deploys should wait for approval.
 
 After that:
-- Every PR gets `https://dash-pr-<n>.fly.dev`, with its own database branch.
+- Every PR gets `https://dashapp-pr-<n>.fly.dev`, with its own database branch.
 - Merging to `main` deploys production (`.github/workflows/deploy.yml`) after CI passes.
 
 ## Alerts
@@ -78,9 +78,9 @@ After that:
 ## Backups and restore
 
 - **Neon point-in-time restore** is the backup. Set the history retention on the project to what the plan allows (7 days on Launch, 30 on Scale). To recover:
-  1. Create a branch from `main` at a timestamp before the incident (Console → Branches → Create → "Past point in time").
+  1. Create a branch from `production` at a timestamp before the incident (Console → Branches → Create → "Past point in time").
   2. Check the data there, through its own connection string or `psql`.
-  3. Either restore `main` from it (Console → Restore) or copy the rows needed.
+  3. Either restore `production` from it (Console → Restore) or copy the rows needed.
 - **Drill every quarter.**
   1. Restore yesterday into a throwaway branch.
   2. Point a local API at it (`DATABASE_URL=… pnpm --dir server dev`).

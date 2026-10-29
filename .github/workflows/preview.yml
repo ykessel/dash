@@ -11,7 +11,7 @@ concurrency:
   group: preview-${{ github.event.number }}
 
 env:
-  APP: dash-pr-${{ github.event.number }}
+  APP: dashapp-pr-${{ github.event.number }}
   BRANCH: pr-${{ github.event.number }}
 
 jobs:
