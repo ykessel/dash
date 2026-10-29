@@ -1,3 +1,4 @@
+import type { AddressInfo } from 'node:net'
 import type { INestApplication } from '@nestjs/common'
 import { Test, type TestingModuleBuilder } from '@nestjs/testing'
 import { ThrottlerStorage } from '@nestjs/throttler'
@@ -16,6 +17,8 @@ export interface TestApp {
   db: DataSource
   mailer: MemoryMailer
   clock: FakeClock
+  /** Base URL of the listening server, for socket clients. */
+  url: string
 }
 
 /**
@@ -32,8 +35,10 @@ export async function createTestApp(overrides?: (b: TestingModuleBuilder) => Tes
   const moduleRef = await builder.compile()
   const app = moduleRef.createNestApplication()
   configureApp(app)
-  await app.init()
-  return { app, http: request(app.getHttpServer()), db: app.get(DataSource), mailer, clock }
+  // Listen on a free port so socket.io clients can connect; supertest reuses the same server.
+  await app.listen(0, '127.0.0.1')
+  const { port } = app.getHttpServer().address() as AddressInfo
+  return { app, http: request(app.getHttpServer()), db: app.get(DataSource), mailer, clock, url: `http://127.0.0.1:${port}` }
 }
 
 /** Empties every table except the migrations log. */

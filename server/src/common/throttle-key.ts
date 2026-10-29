@@ -36,6 +36,11 @@ export const SIGNUP_LIMIT = { default: { limit: 10, ttl: 60 * MIN } }
 /** Answers 429 in the API's error shape, with a plain `Retry-After` header. */
 @Injectable()
 export class AppThrottlerGuard extends ThrottlerGuard {
+  // Limits are per HTTP request; socket messages have no req/res to key or answer on.
+  protected async shouldSkip(ctx: ExecutionContext): Promise<boolean> {
+    return ctx.getType() !== 'http' || super.shouldSkip(ctx)
+  }
+
   protected async throwThrottlingException(ctx: ExecutionContext, detail: ThrottlerLimitDetail): Promise<void> {
     ctx.switchToHttp().getResponse<Response>().setHeader('Retry-After', String(Math.max(1, detail.timeToBlockExpire)))
     throw new AppError(429, 'rate_limited', 'Too many attempts. Try again in a moment.')
