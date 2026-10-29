@@ -43,7 +43,7 @@ export class WorkspacesService {
     for (let attempt = 0; attempt < 5; attempt++) {
       const slug = attempt === 0 ? base : `${base.slice(0, 35).replace(/-+$/, '')}-${slugSuffix()}`
       try {
-        return await this.ds.transaction(async em => {
+        const created = await this.ds.transaction(async em => {
           const { identifiers } = await em.insert(Workspace, { name: input.name, slug, createdBy: userId })
           const id = identifiers[0].id as string
           await em.insert(Membership, { workspaceId: id, userId, role: 'owner', team: input.team ?? 'Product', title: input.title ?? '' })
@@ -51,6 +51,9 @@ export class WorkspacesService {
           const member = await em.findOneByOrFail(Membership, { workspaceId: id, userId })
           return { workspace: summary(workspace), member: toPerson(member, user) }
         })
+        // Lets the creator's open tabs join the new workspace's room, like any new member.
+        this.events.publish('member.joined', created.workspace.id, { userId }, { member: created.member })
+        return created
       } catch (e) {
         if (!isUniqueViolation(e)) throw e
       }

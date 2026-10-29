@@ -82,6 +82,12 @@ describe('members', () => {
     await t.http.delete(member(kai.user.id)).set(lin.auth).expect(204)
   })
 
+  it.each([[{}], [{ nickname: 'x' }]])('a patch with nothing to change (%p) returns the member unchanged', async body => {
+    const res = await t.http.patch(member(nia.user.id)).set(nia.auth).send(body).expect(200)
+    expect(res.body).toMatchObject({ id: nia.user.id, team: 'Product' })
+    expect(events).toEqual([])
+  })
+
   it('an unknown member is 404 member_not_found', async () => {
     const res = await t.http.patch(member('00000000-0000-4000-8000-000000000000')).set(lin.auth).send({ title: 'x' }).expect(404)
     expect(res.body.code).toBe('member_not_found')

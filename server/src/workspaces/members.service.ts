@@ -48,6 +48,8 @@ export class MembersService {
     if (by.role === 'member' && (!self || patch.role !== undefined)) throw forbidden()
     if (target.role === 'owner' && patch.role !== undefined) throw cannotChangeOwner()
     const { role, ...profile } = patch
+    // zod drops unknown keys, so `{}` and `{ nickname }` both arrive empty: nothing to save or announce.
+    if (!Object.values(patch).some(v => v !== undefined)) return this.person(wsId, userId)
     await this.repo.update({ workspaceId: wsId, userId }, { ...profile, ...(role ? { role } : {}) })
     const member = await this.person(wsId, userId)
     this.events.publish('member.updated', wsId, actor, { member })
@@ -89,8 +91,18 @@ export class MembersService {
     const rows = await this.repo.findBy(from === 'any' ? { userId } : { userId, presence: In(from) })
     const changed = rows.filter(r => r.presence !== to || r.presenceNote !== null)
     if (!changed.length) return []
-    await this.repo.update({ userId, workspaceId: In(changed.map(r => r.workspaceId)) }, { presence: to, presenceNote: null })
+    // Re-check `from` in the UPDATE so a presence set via REST in between isn't overwritten.
+    await this.repo.update(
+      { userId, workspaceId: In(changed.map(r => r.workspaceId)), ...(from === 'any' ? {} : { presence: In(from) }) },
+      { presence: to, presenceNote: null },
+    )
     return changed.map(r => ({ ...r, presence: to, presenceNote: null }))
+  }
+
+  /** Everyone back to away: nobody is connected to a process that just started. */
+  async resetAllPresence(): Promise<void> {
+    await this.repo.createQueryBuilder().update().set({ presence: 'away', presenceNote: null })
+      .where(`presence <> 'away' OR presence_note IS NOT NULL`).execute()
   }
 
   private async find(wsId: string, userId: string): Promise<Membership> {

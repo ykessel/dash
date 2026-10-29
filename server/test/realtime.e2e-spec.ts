@@ -77,6 +77,14 @@ describe('realtime', () => {
     await quiet
   })
 
+  it('another person’s tab with the same client id still gets the change', async () => {
+    await join(nia)
+    const b = await connect(t, nia.token, 'tab-1')
+    const seen = nextEvent(b, 'workspace.updated')
+    await rename('Pane HQ', 'tab-1')
+    await seen
+  })
+
   it('HTTP rate limits do not break sockets', async () => {
     for (let i = 0; i < 3; i++) await connect(t, lin.token)
   })

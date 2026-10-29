@@ -6,11 +6,12 @@ import { WorkspacesService } from '../workspaces/workspaces.service'
 
 const CLIENT_ID = /^[\w-]{1,64}$/
 
-/** Rooms: `user:{id}`, `ws:{wsId}` for each membership, and `client:{clientId}` for echo suppression. */
+/** Rooms: `user:{id}`, `ws:{wsId}` for each membership, and `client:{userId}:{clientId}` for echo suppression. */
 export const rooms = {
   user: (id: string) => `user:${id}`,
   workspace: (id: string) => `ws:${id}`,
-  client: (id: string) => `client:${id}`,
+  // Scoped to the user, so nobody can pick another person's client id and mute their updates.
+  client: (userId: string, clientId: string) => `client:${userId}:${clientId}`,
 }
 
 export interface SocketListener {
@@ -57,7 +58,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayDisconnect {
     const userId = this.sessions.verifyAccess(typeof auth.token === 'string' ? auth.token : '')
     const mine = await this.workspaces.listForUser(userId)
     const join = [rooms.user(userId), ...mine.map(w => rooms.workspace(w.id))]
-    if (typeof auth.clientId === 'string' && CLIENT_ID.test(auth.clientId)) join.push(rooms.client(auth.clientId))
+    if (typeof auth.clientId === 'string' && CLIENT_ID.test(auth.clientId)) join.push(rooms.client(userId, auth.clientId))
     await socket.join(join)
     socket.data.userId = userId
   }
