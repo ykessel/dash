@@ -14,6 +14,7 @@ import { MailModule } from './mail/mail.module'
 import { CalendarModule } from './calendar/calendar.module'
 import { FocusModule } from './focus/focus.module'
 import { InsightsModule } from './insights/insights.module'
+import { NoticesModule } from './notices/notices.module'
 import { NotificationsModule } from './notifications/notifications.module'
 import { PrefsModule } from './prefs/prefs.module'
 import { ProjectsModule } from './projects/projects.module'
@@ -41,6 +42,7 @@ import { WorkspacesModule } from './workspaces/workspaces.module'
     TasksModule,
     CalendarModule,
     NotificationsModule,
+    NoticesModule,
     FocusModule,
     PrefsModule,
     SnapshotModule,

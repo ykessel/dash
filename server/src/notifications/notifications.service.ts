@@ -16,18 +16,18 @@ export class NotificationsService {
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
-  /** Stores a notice for one person and tells only their tabs. Who triggers notices is phase 5. */
-  async create(wsId: string, recipientId: string, actor: Actor, kind: string, text: string): Promise<Notice> {
+  /** Stores a notice for one person and tells only their tabs. `actor` null = a system reminder. Rules live in NoticeGate. */
+  async create(wsId: string, recipientId: string, actor: Actor | null, kind: string, text: string): Promise<Notice> {
     const { identifiers } = await this.repo.insert({
       workspaceId: wsId,
       recipientId,
-      actorId: actor.userId,
+      actorId: actor?.userId ?? null,
       kind,
       payload: { text },
       createdAt: this.clock.now(),
     })
     const notice = toNotice(await this.repo.findOneByOrFail({ id: identifiers[0].id as string }))
-    this.events.publish('notification.created', wsId, actor, { notice }, recipientId)
+    this.events.publish('notification.created', wsId, actor ?? { userId: '' }, { notice }, recipientId)
     return notice
   }
 
