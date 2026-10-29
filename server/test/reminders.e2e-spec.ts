@@ -120,3 +120,81 @@ describe('reminders', () => {
     })
   })
 })
+
+describe('digest', () => {
+  let t: TestApp
+  let lin: Signed
+  let nia: Signed
+  let wsA: string
+  let base: string
+  let project: string
+  beforeAll(async () => { t = await createTestApp() })
+  beforeEach(async () => {
+    await resetAll(t)
+    ;({ lin, nia, wsA, base } = await twoTeams(t))
+    project = (await t.http.post(`${base}/projects`).set(lin.auth).send({ name: 'Tide', hue: 'teal', icon: 'leaf', due: '2026-12-01' })).body.id
+  })
+  afterAll(() => t.app.close())
+
+  const tick = () => t.app.get(RemindersService).tick()
+  const digests = () => t.mailer.sent.filter(m => m.subject === 'Your day in Pane')
+  const optIn = () => t.http.patch('/api/v1/me/prefs').set(nia.auth).send({ notify: { digest: true } }).expect(200)
+  /** nia's task (assigning her leaves one unread notice), then the clock moves to her 09:01 and it falls due today, with a 10:00 meeting. */
+  const busyMorning = async () => {
+    const id = (await t.http.post(`${base}/tasks`).set(lin.auth).send({ title: 'Ship it', project, assignee: nia.user.id }).expect(201)).body.id
+    await advanceToLocal(t, 'UTC', '09:01')
+    const day = await clockDay(t, 'UTC')
+    await t.db.query(`UPDATE tasks SET due_date = $2 WHERE id = $1`, [id, day])
+    const [{ id: ev }] = await t.db.query(
+      `INSERT INTO events (workspace_id, title, date, start_min, dur_min, kind, hue) VALUES ($1, 'Standup', $2, 600, 15, 'team', 'blue') RETURNING id`,
+      [wsA, day],
+    )
+    await t.db.query(`INSERT INTO event_attendees (event_id, user_id) VALUES ($1, $2)`, [ev, nia.user.id])
+  }
+
+  it('mails the digest at nine to members who opted in', async () => {
+    await optIn()
+    await busyMorning()
+    await tick()
+    expect(digests()).toHaveLength(1)
+    const [mail] = digests()
+    expect(mail.to).toBe('nia@pane.app')
+    expect(mail.text).toContain('Ship it')
+    expect(mail.text).toContain('10:00 Standup')
+    expect(mail.text).toContain('1 unread')
+    expect(mail.text).toContain('http://localhost:5173/#/home')
+  })
+
+  it('no digest when the toggle is off', async () => {
+    await busyMorning()
+    await tick()
+    expect(digests()).toEqual([])
+  })
+
+  it('one digest per day', async () => {
+    await optIn()
+    await busyMorning()
+    await tick()
+    await tick()
+    expect(digests()).toHaveLength(1)
+    t.clock.advance(86_400_000)
+    await tick()
+    expect(digests()).toHaveLength(2)
+    expect(digests()[1].text).toContain('1 overdue')
+  })
+
+  it('skips an empty day', async () => {
+    await optIn()
+    await advanceToLocal(t, 'UTC', '09:01')
+    await tick()
+    expect(digests()).toEqual([])
+  })
+
+  it('not before nine', async () => {
+    await optIn()
+    await busyMorning()
+    await advanceToLocal(t, 'UTC', '08:59')
+    await tick()
+    expect(digests()).toEqual([])
+  })
+})

@@ -20,6 +20,8 @@ const schema = z.object({
   GITHUB_CLIENT_ID: z.string().default(''),
   GITHUB_CLIENT_SECRET: z.string().default(''),
   COOKIE_SECURE: bool,
+  /** How often reminders and digests are checked; 0 turns the timer off (tests call tick() directly). */
+  REMINDER_TICK_MS: z.coerce.number().int().min(0).default(60_000),
 })
 
 export type Env = z.infer<typeof schema>

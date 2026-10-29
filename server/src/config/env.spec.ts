@@ -28,4 +28,9 @@ describe('loadEnv', () => {
   it('lists every invalid variable', () => {
     expect(() => loadEnv({ ...valid, DATABASE_URL: undefined, APP_URL: 'nope' })).toThrow(/DATABASE_URL[\s\S]*APP_URL|APP_URL[\s\S]*DATABASE_URL/)
   })
+
+  it('REMINDER_TICK_MS defaults to a minute and 0 turns the timer off', () => {
+    expect(loadEnv(valid).REMINDER_TICK_MS).toBe(60_000)
+    expect(loadEnv({ ...valid, REMINDER_TICK_MS: '0' }).REMINDER_TICK_MS).toBe(0)
+  })
 })
