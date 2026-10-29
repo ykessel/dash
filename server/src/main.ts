@@ -2,6 +2,7 @@ import 'reflect-metadata'
 import type { INestApplication } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { NestFactory } from '@nestjs/core'
+import type { NestExpressApplication } from '@nestjs/platform-express'
 import cookieParser from 'cookie-parser'
 import type { Express } from 'express'
 import helmet from 'helmet'
@@ -18,8 +19,23 @@ export function configureApp(app: INestApplication) {
   express.set('trust proxy', 1)
   express.disable('x-powered-by')
   app.setGlobalPrefix('api/v1')
-  app.use(helmet())
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        // React sets inline style attributes; the app's font comes from Google Fonts.
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+        // Same origin covers the REST API and the socket (wss: on the same host).
+        connectSrc: ["'self'"],
+        imgSrc: ["'self'", 'data:'],
+      },
+    },
+  }))
   app.enableCors({ origin: config.get('APP_URL', { infer: true }), credentials: true })
+  // One image: the built web app at `/`, the API under /api/v1. Hash routing needs only index.html.
+  const web = config.get('WEB_DIR', { infer: true })
+  if (web) (app as NestExpressApplication).useStaticAssets(web)
   app.useWebSocketAdapter(new AppIoAdapter(app, config.get('APP_URL', { infer: true })))
   app.use(cookieParser())
   app.useGlobalFilters(new AppExceptionFilter())
@@ -28,6 +44,8 @@ export function configureApp(app: INestApplication) {
 async function main() {
   const app = await NestFactory.create(AppModule)
   configureApp(app)
+  // Fly stops machines with SIGINT/SIGTERM: close sockets and the DB pool cleanly.
+  app.enableShutdownHooks()
   await app.listen(app.get<ConfigService<Env, true>>(ConfigService).get('PORT', { infer: true }))
 }
 

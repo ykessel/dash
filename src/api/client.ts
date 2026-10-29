@@ -1,7 +1,9 @@
 /* The one way the app talks to the Pane API: JSON over fetch, the access token in memory,
    the refresh token in an httpOnly cookie, one refresh-and-retry when the token runs out. */
 
-export const API_URL: string = (import.meta.env?.VITE_API_URL as string | undefined) ?? 'http://localhost:3000'
+/** Dev talks to the local API; a production build is served by the API itself, so its own origin. */
+export const API_URL: string = (import.meta.env?.VITE_API_URL as string | undefined)
+  || (import.meta.env?.DEV ? 'http://localhost:3000' : location.origin)
 const BASE = `${API_URL}/api/v1`
 
 /** What the API sends back on failure: `{ code, message, field? }`. */

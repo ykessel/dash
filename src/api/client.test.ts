@@ -94,4 +94,15 @@ describe('api client', () => {
     expect(a.clientId).not.toBe('copied-from-the-other-tab')
     expect(a.clientId).not.toBe(b.clientId)
   })
+
+  it('a production build without VITE_API_URL talks to its own origin', async () => {
+    vi.stubEnv('DEV', false)
+    vi.stubEnv('VITE_API_URL', undefined)
+    vi.stubGlobal('location', { origin: 'https://app.pane.dev' })
+    try {
+      expect((await load()).API_URL).toBe('https://app.pane.dev')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
 })
