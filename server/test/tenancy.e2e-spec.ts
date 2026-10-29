@@ -32,6 +32,11 @@ const routes: [Method, (ws: string, ctx: { otherId: string }) => string][] = [
   ['delete', ws => `/api/v1/workspaces/${ws}/tasks/${ANY}`],
   ['post', ws => `/api/v1/workspaces/${ws}/tasks/${ANY}/restore`],
   ['post', ws => `/api/v1/workspaces/${ws}/tasks/${ANY}/move`],
+  ['post', ws => `/api/v1/workspaces/${ws}/tasks/${ANY}/subtasks`],
+  ['patch', ws => `/api/v1/workspaces/${ws}/tasks/${ANY}/subtasks/${ANY}`],
+  ['delete', ws => `/api/v1/workspaces/${ws}/tasks/${ANY}/subtasks/${ANY}`],
+  ['post', ws => `/api/v1/workspaces/${ws}/tasks/${ANY}/comments`],
+  ['delete', ws => `/api/v1/workspaces/${ws}/tasks/${ANY}/comments/${ANY}`],
 ]
 
 describe('tenant isolation', () => {
