@@ -49,6 +49,7 @@ const routes: [Method, (ws: string, ctx: { otherId: string }) => string][] = [
   ['get', ws => `/api/v1/workspaces/${ws}/focus-sessions?from=2026-01-01&to=2026-01-31`],
   ['get', ws => `/api/v1/workspaces/${ws}/snapshot`],
   ['get', ws => `/api/v1/workspaces/${ws}/insights`],
+  ['get', ws => `/api/v1/workspaces/${ws}/insights.csv`],
 ]
 
 describe('tenant isolation', () => {

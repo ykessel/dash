@@ -194,4 +194,25 @@ describe('insights', () => {
       ])
     })
   })
+
+  describe('CSV export', () => {
+    it('downloads date, finished, previous_period and focus_hours for each day of the window', async () => {
+      const a = await task('a')
+      await finishedAt(t, a.id, lin.user.id, daysAgo(0))
+      await focusAt(t, wsA, nia.user.id, daysAgo(0), 5400)
+      const res = await t.http.get(`${base}/insights.csv?range=7d`).set(lin.auth).expect(200)
+      expect(res.headers['content-type']).toBe('text/csv; charset=utf-8')
+      expect(res.headers['content-disposition']).toBe('attachment; filename="pane-insights-7d.csv"')
+      const lines = res.text.split('\n')
+      expect(lines).toHaveLength(8)
+      expect(lines[0]).toBe('date,finished,previous_period,focus_hours')
+      expect(lines[1]).toBe(`${dayAgo(6)},0,0,0`)
+      expect(lines[7]).toBe(`${dayAgo(0)},1,0,1.5`)
+    })
+
+    it('a bad range is 400 on the CSV route too', async () => {
+      const res = await t.http.get(`${base}/insights.csv?range=abc`).set(lin.auth).expect(400)
+      expect(res.body).toMatchObject({ code: 'invalid', field: 'range' })
+    })
+  })
 })
