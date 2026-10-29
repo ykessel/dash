@@ -191,7 +191,7 @@ function Agenda({ date }: { date: string }) {
   const d = parse(date)
   const now = nowMinutes()
   const due = data.tasks
-    .filter(t => (isToday ? (t.status !== 'done' && t.due <= date) || t.doneAt === date : t.status !== 'done' && t.due === date))
+    .filter(t => (isToday ? (t.status !== 'done' && (!!t.due && t.due <= date)) || t.doneAt === date : t.status !== 'done' && t.due === date))
     .sort((a, b) => (a.status === 'done' ? 1 : 0) - (b.status === 'done' ? 1 : 0) || sortByDue(a, b))
   const nowAt = isToday ? evs.findIndex(e => e.start > now) : -2
   const ms = milestones(date)

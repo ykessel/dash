@@ -3,7 +3,12 @@ import { EventEmitter2 } from '@nestjs/event-emitter'
 import type { Actor } from './actor.decorator'
 import { CLOCK, type Clock } from './clock'
 
-export type DomainEventType = 'workspace.updated' | 'member.joined' | 'member.updated' | 'member.left' | 'presence.changed'
+export type DomainEventType =
+  | 'workspace.updated' | 'member.joined' | 'member.updated' | 'member.left' | 'presence.changed'
+  | 'project.created' | 'project.updated' | 'project.deleted' | 'milestone.updated'
+  | 'task.created' | 'task.updated' | 'task.moved' | 'task.deleted' | 'task.restored' | 'comment.created'
+  | 'event.created' | 'event.updated' | 'event.deleted'
+  | 'notification.created'
 
 /** Something that changed in a workspace. Services publish it; RealtimeBridge decides who hears it. */
 export interface DomainEvent {
@@ -12,6 +17,8 @@ export interface DomainEvent {
   actor: Actor
   data: Record<string, unknown>
   at: Date
+  /** Private to one person (a notice): only their tabs hear it, never the rest of the workspace. */
+  toUser?: string
 }
 
 @Injectable()
@@ -21,8 +28,8 @@ export class DomainEvents {
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
-  publish(type: DomainEventType, workspaceId: string, actor: Actor, data: Record<string, unknown>): void {
-    const event: DomainEvent = { type, workspaceId, actor, data, at: this.clock.now() }
+  publish(type: DomainEventType, workspaceId: string, actor: Actor, data: Record<string, unknown>, toUser?: string): void {
+    const event: DomainEvent = { type, workspaceId, actor, data, at: this.clock.now(), ...(toUser ? { toUser } : {}) }
     this.emitter.emit('domain', event)
   }
 }

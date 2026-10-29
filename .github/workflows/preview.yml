@@ -1,0 +1,81 @@
+# One preview per PR: a Neon branch (copy of the seed-only "preview" branch) and a Fly app, torn down on close.
+# Needs: secrets NEON_API_KEY, FLY_API_TOKEN, PREVIEW_JWT_SECRET, PREVIEW_SMTP_URL;
+#        variables NEON_PROJECT_ID, FLY_ORG, MAIL_FROM. See docs/ops/production.md.
+name: Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+concurrency:
+  group: preview-${{ github.event.number }}
+
+env:
+  APP: dash-pr-${{ github.event.number }}
+  BRANCH: pr-${{ github.event.number }}
+
+jobs:
+  # CI already tests every PR (ci.yml); a preview goes up regardless so a broken one can be looked at.
+  deploy:
+    # Forks don't get secrets; their PRs run CI only.
+    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    environment:
+      name: preview
+      url: https://${{ env.APP }}.fly.dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: neondatabase/create-branch-action@v6
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          branch_name: ${{ env.BRANCH }}
+          # Never the production branch: previews are public URLs. "preview" holds seed data only.
+          parent_branch: preview
+          api_key: ${{ secrets.NEON_API_KEY }}
+      - uses: superfly/flyctl-actions/setup-flyctl@v1
+      - name: Create the app once
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl apps list --json | jq -e --arg a "$APP" 'any(.[]; .Name == $a)' > /dev/null || flyctl apps create "$APP" --org "${{ vars.FLY_ORG }}"
+      - name: Secrets
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+        # The branch action's outputs aren't masked, and interpolating them would print the password.
+        # Fetch the URLs here and mask them before anything can echo them.
+        run: |
+          neon() { npx --yes neonctl@2 connection-string "$BRANCH" --project-id "${{ vars.NEON_PROJECT_ID }}" \
+            --database-name neondb --role-name neondb_owner "$@"; }
+          pooled=$(neon --pooled)
+          direct=$(neon)
+          pw=$(node -e 'console.log(new URL(process.argv[1]).password)' "$direct")
+          echo "::add-mask::$pw"
+          echo "::add-mask::$pooled"
+          echo "::add-mask::$direct"
+          flyctl secrets set --app "$APP" --stage \
+            DATABASE_URL="$pooled" \
+            DATABASE_URL_DIRECT="$direct" \
+            JWT_SECRET="${{ secrets.PREVIEW_JWT_SECRET }}" \
+            SMTP_URL="${{ secrets.PREVIEW_SMTP_URL }}" \
+            MAIL_FROM="${{ vars.MAIL_FROM }}" \
+            APP_URL="https://$APP.fly.dev" \
+            API_URL="https://$APP.fly.dev"
+      - name: Deploy
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy --app "$APP" --config fly.toml --remote-only --ha=false
+
+  teardown:
+    if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@v1
+      - name: Destroy the app
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl apps destroy "$APP" --yes || true
+      - uses: neondatabase/delete-branch-action@v3
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          branch: ${{ env.BRANCH }}
+          api_key: ${{ secrets.NEON_API_KEY }}

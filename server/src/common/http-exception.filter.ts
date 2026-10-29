@@ -1,14 +1,28 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common'
-import type { Response } from 'express'
+import type { Request, Response } from 'express'
+import type { ErrorReporter } from '../observability/reporter'
 
 /** Form fields an error can point at; anything else is reported without a field. */
-export const ERROR_FIELDS = ['email', 'password', 'name', 'team', 'title', 'city', 'tz', 'capacity', 'role', 'presence', 'note'] as const
+export const ERROR_FIELDS = [
+  'email', 'password', 'name', 'team', 'title', 'city', 'tz', 'capacity', 'role', 'presence', 'note',
+  'desc', 'hue', 'icon', 'status', 'start', 'due', 'lead', 'members', 'userIds', 'version', 'done',
+  'project', 'assignee', 'priority', 'estimate', 'beforeId', 'text',
+  'date', 'dur', 'where', 'kind', 'people', 'from', 'to',
+  'plannedSec', 'actualSec', 'label', 'taskId', 'notify', 'look', 'range', 'session', 'pause', 'avatarSkin', 'mentions',
+] as const
 export type ErrorField = (typeof ERROR_FIELDS)[number]
 
 /** Error with a stable `code` the client can switch on, and an optional form field to highlight. */
 export class AppError extends HttpException {
   constructor(status: number, readonly code: string, message: string, readonly field?: ErrorField) {
     super({ code, message, field }, status)
+  }
+}
+
+/** Ends a browser navigation (not an XHR) by sending it somewhere else instead of a JSON error. */
+export class RedirectError extends HttpException {
+  constructor(readonly url: string) {
+    super('Redirect', HttpStatus.FOUND)
   }
 }
 
@@ -26,8 +40,14 @@ const CODES: Record<number, string> = {
 export class AppExceptionFilter implements ExceptionFilter {
   private readonly log = new Logger('Error')
 
+  constructor(private readonly report?: ErrorReporter) {}
+
   catch(err: unknown, host: ArgumentsHost) {
     const res = host.switchToHttp().getResponse<Response>()
+    if (err instanceof RedirectError) {
+      res.redirect(302, err.url)
+      return
+    }
     if (err instanceof AppError) {
       res.status(err.getStatus()).json({ code: err.code, message: err.message, ...(err.field ? { field: err.field } : {}) })
       return
@@ -42,6 +62,9 @@ export class AppExceptionFilter implements ExceptionFilter {
       return
     }
     this.log.error(err)
+    const req = host.switchToHttp().getRequest<Request & { id?: string }>()
+    // Only where and which request: the query string, body and cookies may hold secrets.
+    this.report?.(err, { method: req.method, path: req.originalUrl.split('?')[0], requestId: req.id })
     res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ code: 'internal', message: 'Something went wrong.' })
   }
 }

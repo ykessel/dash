@@ -23,9 +23,13 @@ export interface TestApp {
 
 /**
  * Boots the real AppModule against the test database, with an in-memory
- * mailer and a movable clock. `overrides` swaps more providers (e.g. OAuth strategies).
+ * mailer and a movable clock. `overrides` swaps more providers (e.g. OAuth strategies);
+ * `redisUrl` joins the instance to a Redis-backed Socket.IO cluster.
  */
-export async function createTestApp(overrides?: (b: TestingModuleBuilder) => TestingModuleBuilder): Promise<TestApp> {
+export async function createTestApp(
+  overrides?: (b: TestingModuleBuilder) => TestingModuleBuilder,
+  opts: { redisUrl?: string } = {},
+): Promise<TestApp> {
   const mailer = new MemoryMailer()
   const clock = new FakeClock()
   let builder = Test.createTestingModule({ imports: [AppModule] })
@@ -34,7 +38,8 @@ export async function createTestApp(overrides?: (b: TestingModuleBuilder) => Tes
   if (overrides) builder = overrides(builder)
   const moduleRef = await builder.compile()
   const app = moduleRef.createNestApplication()
-  configureApp(app)
+  const io = configureApp(app)
+  if (opts.redisUrl) await io.connectToRedis(opts.redisUrl)
   // Listen on a free port so socket.io clients can connect; supertest reuses the same server.
   await app.listen(0, '127.0.0.1')
   const { port } = app.getHttpServer().address() as AddressInfo

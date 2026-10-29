@@ -74,15 +74,26 @@ function Field({ label, children, full }: { label: string; children: ReactNode; 
 }
 
 function TaskForm({ preset, onDone }: { preset?: Partial<import('../data/types').Task>; onDone: () => void }) {
-  const { data, me, addTask, notify } = useStore()
+  const { data, me, addTask, notify, openModal } = useStore()
   const [title, setTitle] = useState(preset?.title ?? '')
-  const [projectId, setProject] = useState(preset?.project ?? data.projects[0].id)
+  const [projectId, setProject] = useState(preset?.project ?? data.projects[0]?.id ?? '')
   const [assignee, setAssignee] = useState(preset?.assignee ?? me.id)
   const [priority, setPriority] = useState<Priority>(preset?.priority ?? 'medium')
   const [due, setDue] = useState(preset?.due ?? offset(2))
   const [status, setStatus] = useState<Status>(preset?.status ?? 'todo')
   const [estimate, setEstimate] = useState(preset?.estimate ?? 2)
   const [err, setErr] = useState(false)
+
+  // A brand-new workspace has no projects yet, and every task belongs to one.
+  if (!data.projects.length) {
+    return (
+      <div className="mform">
+        <FormHead title="New task" onClose={onDone} submit={null} />
+        <p className="mform__empty">Tasks live in projects. Create your first project, then add tasks to it.</p>
+        <button type="button" className="btn btn--primary" onClick={() => openModal({ kind: 'project' })}>New project</button>
+      </div>
+    )
+  }
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
@@ -199,10 +210,12 @@ function ProjectForm({ onDone }: { onDone: () => void }) {
   const submit = (e: FormEvent) => {
     e.preventDefault()
     if (!name.trim()) { setErr(true); return }
-    const p = addProject({ name: name.trim(), desc: desc.trim() || 'A fresh project.', hue, icon, due, status: 'planning' })
-    onDone()
-    notify(`Created ${p.name}`, 'ok')
-    go(`projects/${p.id}`)
+    addProject({ name: name.trim(), desc: desc.trim() || 'A fresh project.', hue, icon, due, status: 'planning' }).then(p => {
+      if (!p) return
+      onDone()
+      notify(`Created ${p.name}`, 'ok')
+      go(`projects/${p.id}`)
+    })
   }
   return (
     <form className="mform" onSubmit={submit} noValidate>
@@ -246,9 +259,11 @@ function InviteForm({ onDone }: { onDone: () => void }) {
     e.preventDefault()
     if (!name.trim()) { setErr('Name is required.'); return }
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) { setErr('Enter a valid email address.'); return }
-    invite(name.trim(), email.trim(), team, role.trim() || `${team} teammate`)
-    onDone()
-    notify(`Invite sent to ${email.trim()}`, 'ok')
+    invite(name.trim(), email.trim(), team, role.trim() || `${team} teammate`).then(ok => {
+      if (!ok) return
+      onDone()
+      notify(`Invite sent to ${email.trim()}`, 'ok')
+    })
   }
   return (
     <form className="mform" onSubmit={submit} noValidate>
@@ -316,7 +331,7 @@ function DrawerPanel({ leaving, onClose, children }: { leaving: boolean; onClose
 }
 
 function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
-  const { data, me, person, project, updateTask, moveTask, removeTask, startFocus, toggleDone } = useStore()
+  const { data, person, project, moveTask, removeTask, startFocus, toggleDone, addSubtask, toggleSubtask, addComment: comment } = useStore()
   const t = data.tasks.find(x => x.id === id)
   const [sub, setSub] = useState('')
   const [msg, setMsg] = useState('')
@@ -328,16 +343,18 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const addSub = (e: FormEvent) => {
     e.preventDefault()
     if (!sub.trim()) return
-    updateTask(t.id, { subtasks: [...t.subtasks, { id: `s${Date.now()}`, title: sub.trim(), done: false }] })
+    addSubtask(t.id, sub.trim())
     setSub('')
   }
   const addComment = (e: FormEvent) => {
     e.preventDefault()
     if (!msg.trim()) return
-    updateTask(t.id, { comments: [...t.comments, { id: `c${Date.now()}`, who: me.id, text: msg.trim(), at: Date.now() }] })
+    // @Name of a teammate becomes a mention, so they get a notice.
+    const text = msg.trim()
+    comment(t.id, text, data.people.filter(x => text.includes(`@${x.name.split(' ')[0]}`)).map(x => x.id))
     setMsg('')
   }
-  const toggleSub = (sid: string) => updateTask(t.id, { subtasks: t.subtasks.map(x => (x.id === sid ? { ...x, done: !x.done } : x)) })
+  const toggleSub = (sid: string) => toggleSubtask(t.id, sid)
 
   return (
     <>
@@ -533,7 +550,7 @@ function PersonDetail({ id, onClose }: { id: string; onClose: () => void }) {
                     <span className="picon" data-hue={pr.hue}><Icon name={pr.icon} /></span>
                     <span className="prof__rowtext">
                       <b>{t.title}</b>
-                      <small className={t.due < today ? 'is-late' : ''}>{relDue(t.due)} · {pr.name}</small>
+                      <small className={(!!t.due && t.due < today) ? 'is-late' : ''}>{relDue(t.due)} · {pr.name}</small>
                     </span>
                     <Prio v={t.priority} hideLow />
                   </button>

@@ -33,6 +33,17 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayDisconnect {
     private readonly workspaces: WorkspacesService,
   ) {}
 
+  /** Whether this person has an open socket on any instance (all of them, with the Redis adapter). */
+  async hasSockets(userId: string): Promise<boolean> {
+    return (await this.server.in(rooms.user(userId)).fetchSockets()).length > 0
+  }
+
+  /** Everyone with an open socket on any instance. */
+  async connectedUserIds(): Promise<string[]> {
+    const sockets = await this.server.fetchSockets()
+    return [...new Set(sockets.map(s => s.data.userId as string | undefined).filter((id): id is string => !!id))]
+  }
+
   /** Presence hooks in here; one listener is enough. */
   setListener(listener: SocketListener) {
     this.listener = listener

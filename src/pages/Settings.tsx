@@ -26,7 +26,7 @@ function Tile({ icon, hue }: { icon: string; hue: string }) {
 }
 
 export function Settings() {
-  const { data, me, look, setLook, setPrefs, startFocus, resetDemo, notify, project, person } = useStore()
+  const { data, me, look, setLook, setPrefs, startFocus, notify, project, person } = useStore()
   const [active, setActive] = useState<string>('profile')
   const n = data.prefs.notify
   const setN = (k: keyof Prefs['notify']) => setPrefs({ notify: { ...n, [k]: !n[k] } })
@@ -168,16 +168,11 @@ export function Settings() {
           </section>
 
           <section id="set-data" className="card glass rise" style={{ ['--i' as string]: 5 }}>
-            <div className="card__head"><div><h2>Data</h2><p>Everything stays in this browser</p></div></div>
+            <div className="card__head"><div><h2>Data</h2><p>Your team’s data lives in Pane</p></div></div>
             <ul className="set-rows">
               <li className="is-link" onClick={exportTasks} role="button" tabIndex={0} onKeyDown={e => e.key === 'Enter' && exportTasks()}>
                 <Tile icon="download" hue="green" />
                 <div><b>Export tasks as CSV</b><small>{data.tasks.length} tasks, one row each</small></div>
-                <Icon name="right" size={16} />
-              </li>
-              <li className="is-link" onClick={() => { if (confirm('Reset all demo data? Your changes will be lost.')) resetDemo() }} role="button" tabIndex={0}>
-                <Tile icon="refresh" hue="pink" />
-                <div><b style={{ color: 'var(--danger)' }}>Reset demo data</b><small>Back to the sample workspace</small></div>
                 <Icon name="right" size={16} />
               </li>
             </ul>

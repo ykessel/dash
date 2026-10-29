@@ -9,14 +9,15 @@ import { RealtimeGateway, type SocketListener } from './realtime.gateway'
 export const PRESENCE_GRACE_MS = 'PRESENCE_GRACE_MS'
 
 /**
- * Online when the first socket opens (only from away, so focus and meeting stay), away once
- * the last one has been closed for the grace period. Counts live in memory: one instance only,
- * so every presence is reset to away when the process starts.
+ * Online when a socket opens (only from away, so focus and meeting stay), away once the person
+ * has had no socket on any instance for the grace period. "Any socket" is asked of the Socket.IO
+ * cluster (`fetchSockets`), so with the Redis adapter it holds across instances. On boot, whoever
+ * is not connected anywhere is reset to away: presence left over from a crash, without touching
+ * people connected to the other instances.
  */
 @Injectable()
 export class PresenceService implements SocketListener, OnModuleInit, OnApplicationBootstrap, OnModuleDestroy {
   private readonly log = new Logger('Presence')
-  private readonly sockets = new Map<string, number>()
   private readonly timers = new Map<string, NodeJS.Timeout>()
   // One write at a time per user, so a late "away" can't land after a reconnect's "online".
   private readonly queues = new Map<string, Promise<void>>()
@@ -33,7 +34,7 @@ export class PresenceService implements SocketListener, OnModuleInit, OnApplicat
   }
 
   async onApplicationBootstrap() {
-    await this.members.resetAllPresence()
+    await this.members.resetPresenceExcept(await this.gateway.connectedUserIds())
   }
 
   onModuleDestroy() {
@@ -42,20 +43,13 @@ export class PresenceService implements SocketListener, OnModuleInit, OnApplicat
   }
 
   connected(userId: string): void {
-    const count = (this.sockets.get(userId) ?? 0) + 1
-    this.sockets.set(userId, count)
     clearTimeout(this.timers.get(userId))
     this.timers.delete(userId)
-    if (count === 1) this.mark(userId, ['away'], 'online')
+    this.mark(userId, ['away'], 'online')
   }
 
   disconnected(userId: string): void {
-    const count = (this.sockets.get(userId) ?? 1) - 1
-    if (count > 0) {
-      this.sockets.set(userId, count)
-      return
-    }
-    this.sockets.delete(userId)
+    clearTimeout(this.timers.get(userId))
     const timer = setTimeout(() => {
       this.timers.delete(userId)
       this.mark(userId, 'any', 'away')
@@ -68,15 +62,14 @@ export class PresenceService implements SocketListener, OnModuleInit, OnApplicat
   @OnEvent('domain')
   onDomain(e: DomainEvent) {
     if (e.type !== 'member.joined') return
-    const userId = (e.data.member as { id: string }).id
-    if (this.sockets.has(userId)) this.mark(userId, ['away'], 'online')
+    this.mark((e.data.member as { id: string }).id, ['away'], 'online')
   }
 
   private mark(userId: string, from: Presence[] | 'any', to: Presence) {
     const prev = this.queues.get(userId) ?? Promise.resolve()
     const next = prev.then(async () => {
-      // Decide with the socket count as it is now, not when the write was requested.
-      if ((to === 'online') !== this.sockets.has(userId)) return
+      // Decide with the sockets as they are now, on every instance, not when the write was requested.
+      if ((to === 'online') !== (await this.gateway.hasSockets(userId))) return
       const changed = await this.members.setPresenceWhere(userId, from, to)
       for (const m of changed) this.events.publish('presence.changed', m.workspaceId, { userId }, { userId, presence: to, note: null })
     }).catch((e: unknown) => this.log.error(e))

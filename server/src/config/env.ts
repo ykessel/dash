@@ -20,14 +20,33 @@ const schema = z.object({
   GITHUB_CLIENT_ID: z.string().default(''),
   GITHUB_CLIENT_SECRET: z.string().default(''),
   COOKIE_SECURE: bool,
+  /** How often reminders and digests are checked; 0 turns the timer off (tests call tick() directly). */
+  REMINDER_TICK_MS: z.coerce.number().int().min(0).default(60_000),
+  /** Optional services: unset means off. */
+  SENTRY_DSN: z.string().url().optional(),
+  REDIS_URL: z.string().url().optional(),
+  /** The built web app, served at `/` next to the API (one origin in production). */
+  WEB_DIR: z.string().min(1).optional(),
+  /** Defaults to `info`, or `silent` under NODE_ENV=test. */
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).optional(),
+}).superRefine((e, ctx) => {
+  if (e.NODE_ENV !== 'production') return
+  const bad = (path: string, message: string) => ctx.addIssue({ code: 'custom', path: [path], message })
+  if (!e.COOKIE_SECURE) bad('COOKIE_SECURE', 'must be true in production (the refresh cookie travels over https only)')
+  if (!e.APP_URL.startsWith('https://')) bad('APP_URL', 'must be https in production')
+  if (!e.API_URL.startsWith('https://')) bad('API_URL', 'must be https in production')
+  if (e.JWT_SECRET === EXAMPLE_SECRET) bad('JWT_SECRET', 'is still the .env.example value; generate a new one')
 })
 
-export type Env = z.infer<typeof schema>
+/** The placeholder in `.env.example`; production refuses to sign tokens with it. */
+const EXAMPLE_SECRET = 'change-me-to-a-long-random-string-of-32-chars'
+
+export type Env = Omit<z.infer<typeof schema>, 'LOG_LEVEL'> & { LOG_LEVEL: NonNullable<z.infer<typeof schema>['LOG_LEVEL']> }
 
 /** Validates process env; throws one error naming every bad variable. */
 export function loadEnv(raw: Record<string, string | undefined>): Env {
   const res = schema.safeParse(raw)
-  if (res.success) return res.data
+  if (res.success) return { ...res.data, LOG_LEVEL: res.data.LOG_LEVEL ?? (res.data.NODE_ENV === 'test' ? 'silent' : 'info') }
   const lines = res.error.issues.map(i => `${i.path.join('.')}: ${i.message}`)
   throw new Error(`Invalid environment:\n${lines.join('\n')}`)
 }

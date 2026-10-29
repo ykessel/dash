@@ -57,6 +57,7 @@ export const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'Jun
 export const WEEKDAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 export function short(s: string): string {
+  if (!s) return 'No date'
   const d = parse(s)
   return `${MON[d.getMonth()]} ${d.getDate()}`
 }
@@ -67,6 +68,7 @@ export function weekday(s: string): string {
 
 /** "Today", "Tomorrow", "Fri" within the week, otherwise "Nov 21". */
 export function relDue(s: string): string {
+  if (!s) return 'No date'
   const n = diffDays(s, todayIso())
   if (n === 0) return 'Today'
   if (n === 1) return 'Tomorrow'
