@@ -11,6 +11,7 @@ import { loadEnv } from './config/env'
 import { DbModule } from './db/db.module'
 import { HealthModule } from './health/health.module'
 import { MailModule } from './mail/mail.module'
+import { ProjectsModule } from './projects/projects.module'
 import { RealtimeModule } from './realtime/realtime.module'
 import { UsersModule } from './users/users.module'
 import { WorkspacesModule } from './workspaces/workspaces.module'
@@ -29,6 +30,7 @@ import { WorkspacesModule } from './workspaces/workspaces.module'
     AuthModule,
     WorkspacesModule,
     RealtimeModule,
+    ProjectsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: AppThrottlerGuard }],
 })

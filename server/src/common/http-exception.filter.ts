@@ -2,7 +2,13 @@ import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logge
 import type { Response } from 'express'
 
 /** Form fields an error can point at; anything else is reported without a field. */
-export const ERROR_FIELDS = ['email', 'password', 'name', 'team', 'title', 'city', 'tz', 'capacity', 'role', 'presence', 'note'] as const
+export const ERROR_FIELDS = [
+  'email', 'password', 'name', 'team', 'title', 'city', 'tz', 'capacity', 'role', 'presence', 'note',
+  'desc', 'hue', 'icon', 'status', 'start', 'due', 'lead', 'members', 'userIds', 'version', 'done',
+  'project', 'assignee', 'priority', 'estimate', 'beforeId', 'text',
+  'date', 'dur', 'where', 'kind', 'people', 'from', 'to',
+  'plannedSec', 'actualSec', 'label', 'taskId', 'notify', 'look', 'session', 'pause', 'avatarSkin',
+] as const
 export type ErrorField = (typeof ERROR_FIELDS)[number]
 
 /** Error with a stable `code` the client can switch on, and an optional form field to highlight. */

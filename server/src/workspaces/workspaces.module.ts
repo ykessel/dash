@@ -7,6 +7,7 @@ import { AcceptInvitationController, InvitationsController } from './invitations
 import { InvitationsService } from './invitations.service'
 import { MembersController } from './members.controller'
 import { MembersService } from './members.service'
+import { WorkspaceRefs } from './refs.service'
 import { Membership } from './membership.entity'
 import { WorkspaceMemberGuard } from './workspace-member.guard'
 import { Workspace } from './workspace.entity'
@@ -16,7 +17,7 @@ import { WorkspacesService } from './workspaces.service'
 @Module({
   imports: [TypeOrmModule.forFeature([Workspace, Membership, Invitation]), AuthModule, UsersModule],
   controllers: [WorkspacesController, MembersController, InvitationsController, AcceptInvitationController],
-  providers: [WorkspacesService, MembersService, InvitationsService, WorkspaceMemberGuard],
-  exports: [WorkspacesService, MembersService, WorkspaceMemberGuard, TypeOrmModule],
+  providers: [WorkspacesService, MembersService, InvitationsService, WorkspaceMemberGuard, WorkspaceRefs],
+  exports: [WorkspacesService, MembersService, WorkspaceMemberGuard, WorkspaceRefs, TypeOrmModule],
 })
 export class WorkspacesModule {}

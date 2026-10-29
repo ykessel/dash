@@ -1,7 +1,8 @@
 import { createTestApp, resetAll, type TestApp } from './utils/app'
 import { signedIn } from './utils/seed'
 
-type Method = 'get' | 'patch' | 'post' | 'delete'
+type Method = 'get' | 'patch' | 'post' | 'put' | 'delete'
+const ANY = '00000000-0000-4000-8000-000000000000'
 
 /** Every team-scoped route. Each task that adds routes adds them here. */
 const routes: [Method, (ws: string, ctx: { otherId: string }) => string][] = [
@@ -14,6 +15,16 @@ const routes: [Method, (ws: string, ctx: { otherId: string }) => string][] = [
   ['post', ws => `/api/v1/workspaces/${ws}/invitations`],
   ['get', ws => `/api/v1/workspaces/${ws}/invitations`],
   ['delete', ws => `/api/v1/workspaces/${ws}/invitations/00000000-0000-4000-8000-000000000000`],
+  ['get', ws => `/api/v1/workspaces/${ws}/projects`],
+  ['post', ws => `/api/v1/workspaces/${ws}/projects`],
+  ['get', ws => `/api/v1/workspaces/${ws}/projects/${ANY}`],
+  ['patch', ws => `/api/v1/workspaces/${ws}/projects/${ANY}`],
+  ['delete', ws => `/api/v1/workspaces/${ws}/projects/${ANY}`],
+  ['put', ws => `/api/v1/workspaces/${ws}/projects/${ANY}/members`],
+  ['put', ws => `/api/v1/workspaces/${ws}/projects/${ANY}/prefs`],
+  ['post', ws => `/api/v1/workspaces/${ws}/projects/${ANY}/milestones`],
+  ['patch', ws => `/api/v1/workspaces/${ws}/projects/${ANY}/milestones/${ANY}`],
+  ['delete', ws => `/api/v1/workspaces/${ws}/projects/${ANY}/milestones/${ANY}`],
 ]
 
 describe('tenant isolation', () => {
