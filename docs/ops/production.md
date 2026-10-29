@@ -11,7 +11,7 @@ Because frontend and API share an origin, the refresh cookie's `SameSite=Lax` wo
 | App | Fly.io (`fly.toml`), at least one machine always running | WebSockets and the reminder timer need a live process |
 | Database | Neon Postgres 16 | Pooled URL for the app, direct URL for migrations |
 | Previews | One Fly app plus one Neon branch per PR (`.github/workflows/preview.yml`) | Removed when the PR closes |
-| Errors | Sentry (`SENTRY_DSN`) | Only unexpected 500s, with no bodies or cookies |
+| Errors | Sentry (`SENTRY_DSN`) | Only unexpected 500s; no bodies, cookies, headers, query strings, IPs or local variables (`observability/sentry.ts`) |
 | Logs | JSON on stdout (pino), read with `fly logs` or a log drain | Credentials are redacted |
 | Several machines | Redis (`REDIS_URL`, e.g. Upstash) | Socket.IO rooms and presence span instances |
 
@@ -40,7 +40,7 @@ Nothing in the repository creates accounts or spends money.
 1. **Neon.**
    - Create a project (Postgres 16, region close to Fly's).
    - Copy the pooled and direct connection strings of the `main` branch.
-   - Create a branch named **`preview`** from `main` *before any customer data exists*, or reset it to seed data. Previews branch from it, and preview URLs are public.
+   - Create a branch named **`preview`** from `main` *before any customer data exists*, or reset it to seed data. Previews branch from it, and preview URLs are public. Previews connect as `neondb_owner` to the `neondb` database (the Neon defaults); change both in `preview.yml` if yours differ.
 2. **Fly.**
    - `fly launch --no-deploy --copy-config` (keep the app name or edit `fly.toml`).
    - `fly secrets set DATABASE_URL=… DATABASE_URL_DIRECT=… JWT_SECRET=… APP_URL=https://… API_URL=https://… SMTP_URL=… MAIL_FROM=…`

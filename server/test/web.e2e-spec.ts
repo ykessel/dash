@@ -37,4 +37,12 @@ describe('web app', () => {
     expect(csp).toContain('https://fonts.gstatic.com')
     expect(csp).toContain("connect-src 'self'")
   })
+
+  it("the app's own index.html has no inline script the CSP would block", async () => {
+    const { readFileSync } = await import('node:fs')
+    const html = readFileSync(join(__dirname, '..', '..', 'index.html'), 'utf8')
+    const csp = (await t.http.get('/')).headers['content-security-policy'] as string
+    expect(csp).toMatch(/script-src 'self'(;|$)/)
+    expect(html.match(/<script(?![^>]*\ssrc=)[^>]*>/g) ?? []).toEqual([])
+  })
 })

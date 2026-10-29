@@ -10,6 +10,7 @@ import helmet from 'helmet'
 import { Logger } from 'nestjs-pino'
 import { AppModule } from './app.module'
 import { AppIoAdapter } from './realtime/io.adapter'
+import { bootOrExit } from './common/boot'
 import { AppExceptionFilter } from './common/http-exception.filter'
 import type { Env } from './config/env'
 import { ERROR_REPORTER, type ErrorReporter } from './observability/reporter'
@@ -58,4 +59,4 @@ async function main() {
   await app.listen(app.get<ConfigService<Env, true>>(ConfigService).get('PORT', { infer: true }))
 }
 
-if (require.main === module) void main()
+if (require.main === module) void bootOrExit(main)
