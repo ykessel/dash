@@ -1,0 +1,27 @@
+# Production: every push to main that passes CI. Migrations run in fly.toml's release_command.
+# Needs: secret FLY_API_TOKEN; the app's runtime secrets are set once with `fly secrets set`.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-production
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://app.pane.dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@v1
+      - run: flyctl deploy --config fly.toml --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
