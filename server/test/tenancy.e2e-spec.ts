@@ -11,6 +11,9 @@ const routes: [Method, (ws: string, ctx: { otherId: string }) => string][] = [
   ['patch', (ws, c) => `/api/v1/workspaces/${ws}/members/${c.otherId}`],
   ['delete', (ws, c) => `/api/v1/workspaces/${ws}/members/${c.otherId}`],
   ['patch', ws => `/api/v1/workspaces/${ws}/members/me/presence`],
+  ['post', ws => `/api/v1/workspaces/${ws}/invitations`],
+  ['get', ws => `/api/v1/workspaces/${ws}/invitations`],
+  ['delete', ws => `/api/v1/workspaces/${ws}/invitations/00000000-0000-4000-8000-000000000000`],
 ]
 
 describe('tenant isolation', () => {
