@@ -45,3 +45,21 @@ export async function focusAt(t: TestApp, wsId: string, userId: string, at: Date
 export async function createdAt(t: TestApp, taskId: string, at: Date): Promise<void> {
   await t.db.query(`UPDATE task_activity SET at = $2 WHERE task_id = $1 AND kind = 'created'`, [taskId, at])
 }
+
+/** Moves the app clock forward to the next wall-clock `time` (`HH:MM`) in `tz`. */
+export async function advanceToLocal(t: TestApp, tz: string, time: string): Promise<void> {
+  const now = t.clock.now()
+  const [{ at }] = await t.db.query(
+    `SELECT CASE WHEN (d + $3::time) AT TIME ZONE $2 > $1 THEN (d + $3::time) AT TIME ZONE $2
+                 ELSE ((d + 1) + $3::time) AT TIME ZONE $2 END AS at
+     FROM (SELECT ($1::timestamptz AT TIME ZONE $2)::date AS d) x`,
+    [now, tz, time],
+  )
+  t.clock.advance(new Date(at).getTime() - now.getTime())
+}
+
+/** The date the app clock reads in `tz`. */
+export async function clockDay(t: TestApp, tz: string): Promise<string> {
+  const [{ d }] = await t.db.query(`SELECT to_char(($1::timestamptz AT TIME ZONE $2)::date, 'YYYY-MM-DD') AS d`, [t.clock.now(), tz])
+  return d
+}
