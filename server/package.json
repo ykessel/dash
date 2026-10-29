@@ -9,6 +9,7 @@
     "build": "nest build",
     "dev": "nest start --watch",
     "start": "node dist/main.js",
+    "migrate": "node dist/db/migrate.js",
     "db:up": "docker compose up -d",
     "test": "jest",
     "test:e2e": "jest --config jest-e2e.json --runInBand",
