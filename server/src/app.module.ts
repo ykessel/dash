@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
 import { APP_GUARD } from '@nestjs/core'
+import { EventEmitterModule } from '@nestjs/event-emitter'
 import { ThrottlerModule } from '@nestjs/throttler'
 import { AuthModule } from './auth/auth.module'
 import { ClockModule } from './common/clock'
+import { DomainEventsModule } from './common/domain-events'
 import { AppThrottlerGuard, throttlers } from './common/throttle-key'
 import { loadEnv } from './config/env'
 import { DbModule } from './db/db.module'
@@ -17,6 +19,8 @@ import { WorkspacesModule } from './workspaces/workspaces.module'
     ConfigModule.forRoot({ isGlobal: true, validate: loadEnv }),
     ThrottlerModule.forRoot(throttlers),
     ClockModule,
+    EventEmitterModule.forRoot(),
+    DomainEventsModule,
     DbModule,
     MailModule,
     HealthModule,

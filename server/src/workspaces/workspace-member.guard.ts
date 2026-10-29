@@ -10,7 +10,7 @@ import { Membership } from './membership.entity'
 import { ROLES } from './roles.decorator'
 import { Workspace } from './workspace.entity'
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
  * Runs after JwtAuthGuard on every `/workspaces/:wsId/…` route. Puts the caller's

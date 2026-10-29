@@ -7,6 +7,10 @@ type Method = 'get' | 'patch' | 'post' | 'delete'
 const routes: [Method, (ws: string, ctx: { otherId: string }) => string][] = [
   ['get', ws => `/api/v1/workspaces/${ws}`],
   ['patch', ws => `/api/v1/workspaces/${ws}`],
+  ['get', ws => `/api/v1/workspaces/${ws}/members`],
+  ['patch', (ws, c) => `/api/v1/workspaces/${ws}/members/${c.otherId}`],
+  ['delete', (ws, c) => `/api/v1/workspaces/${ws}/members/${c.otherId}`],
+  ['patch', ws => `/api/v1/workspaces/${ws}/members/me/presence`],
 ]
 
 describe('tenant isolation', () => {

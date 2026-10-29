@@ -1,7 +1,9 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common'
 import type { Response } from 'express'
 
-export type ErrorField = 'email' | 'password' | 'name'
+/** Form fields an error can point at; anything else is reported without a field. */
+export const ERROR_FIELDS = ['email', 'password', 'name', 'team', 'title', 'city', 'tz', 'capacity', 'role', 'presence', 'note'] as const
+export type ErrorField = (typeof ERROR_FIELDS)[number]
 
 /** Error with a stable `code` the client can switch on, and an optional form field to highlight. */
 export class AppError extends HttpException {

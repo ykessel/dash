@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, type Repository } from 'typeorm'
 import type { Actor } from '../common/actor.decorator'
 import { isUniqueViolation } from '../common/db-errors'
+import { DomainEvents } from '../common/domain-events'
 import { AppError } from '../common/http-exception.filter'
 import { UsersService } from '../users/users.service'
 import type { Access, Team } from './enums'
@@ -31,6 +32,7 @@ export class WorkspacesService {
     @InjectRepository(Workspace) private readonly workspaces: Repository<Workspace>,
     @InjectRepository(Membership) private readonly memberships: Repository<Membership>,
     private readonly users: UsersService,
+    private readonly events: DomainEvents,
   ) {}
 
   /** Creates the workspace with the caller as owner. A taken slug gets a short random suffix. */
@@ -61,9 +63,11 @@ export class WorkspacesService {
     return { ...summary(w), createdAt: w.createdAt, access }
   }
 
-  async rename(wsId: string, name: string, by: Membership, _actor: Actor): Promise<WorkspaceView> {
+  async rename(wsId: string, name: string, by: Membership, actor: Actor): Promise<WorkspaceView> {
     await this.workspaces.update({ id: wsId }, { name })
-    return this.get(wsId, by.role)
+    const view = await this.get(wsId, by.role)
+    this.events.publish('workspace.updated', wsId, actor, { workspace: { id: view.id, name: view.name, slug: view.slug } })
+    return view
   }
 
   /** The caller's workspaces, oldest membership first. */
