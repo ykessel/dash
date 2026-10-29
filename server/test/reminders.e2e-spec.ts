@@ -86,6 +86,29 @@ describe('reminders', () => {
     })
   })
 
+  describe('review fixes', () => {
+    it('a member with a time zone Postgres does not know is skipped, not fatal', async () => {
+      await t.db.query(`UPDATE memberships SET tz = 'Mars/Olympus' WHERE workspace_id = $1 AND user_id = $2`, [wsA, lin.user.id])
+      const id = await ninasTask()
+      await advanceToLocal(t, 'UTC', '09:01')
+      await dueToday(id)
+      await expect(tick()).resolves.toBeDefined()
+      expect(await dueNotices(nia)).toHaveLength(1)
+    })
+
+    it('a later tick does not re-claim what was already sent', async () => {
+      const id = await ninasTask()
+      await advanceToLocal(t, 'UTC', '09:01')
+      await dueToday(id)
+      await tick()
+      const svc = t.app.get(RemindersService)
+      const spy = jest.spyOn(svc, 'claim')
+      await tick()
+      expect(spy).not.toHaveBeenCalled()
+      spy.mockRestore()
+    })
+  })
+
   describe('meetings', () => {
     /** An event today (UTC) starting `inMin` minutes after 10:00, with lin and nia (straight to the DB: tokens expire as the clock moves). */
     const meeting = async (title: string, inMin: number) => {
@@ -181,6 +204,20 @@ describe('digest', () => {
     await tick()
     expect(digests()).toHaveLength(2)
     expect(digests()[1].text).toContain('1 overdue')
+  })
+
+  it('a mail failure does not stop other reminders, and the digest is retried next tick', async () => {
+    await optIn()
+    await busyMorning()
+    const send = t.mailer.send.bind(t.mailer)
+    const spy = jest.spyOn(t.mailer, 'send').mockRejectedValueOnce(new Error('smtp down'))
+    await expect(tick()).resolves.toBeDefined()
+    expect((await t.app.get(NotificationsService).list(wsA, nia.user.id)).some(n => n.text === '“Ship it” is due today')).toBe(true)
+    expect(digests()).toEqual([])
+    spy.mockImplementation(send)
+    await tick()
+    expect(digests()).toHaveLength(1)
+    spy.mockRestore()
   })
 
   it('skips an empty day', async () => {
