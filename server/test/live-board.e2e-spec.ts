@@ -7,10 +7,11 @@ describe('live board', () => {
   let lin: Signed
   let nia: Signed
   let base: string
+  let wsA: string
   beforeAll(async () => { t = await createTestApp() })
   beforeEach(async () => {
     await resetAll(t)
-    ;({ lin, nia, base } = await twoTeams(t))
+    ;({ lin, nia, base, wsA } = await twoTeams(t))
   })
   afterEach(() => closeSockets())
   afterAll(() => t.app.close())
@@ -28,7 +29,10 @@ describe('live board', () => {
 
     const created = nextEvent(niaS, 'task.created')
     const task = (await as(t.http.post(`${base}/tasks`).set(lin.auth)).send({ title: 'Live', project: projectId }).expect(201)).body
-    expect((await created).task).toMatchObject({ id: task.id, title: 'Live' })
+    const createdMsg = await created
+    expect(createdMsg.task).toMatchObject({ id: task.id, title: 'Live' })
+    // A person in several teams has every team's room open: each message says which team it is for.
+    expect(createdMsg.workspaceId).toBe(wsA)
 
     const moved = nextEvent(niaS, 'task.moved')
     await as(t.http.post(`${base}/tasks/${task.id}/move`).set(lin.auth)).send({ status: 'review' }).expect(200)

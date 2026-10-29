@@ -77,6 +77,7 @@ export class TasksService {
     const assignee = orNull(input.assignee)
     if (assignee) await this.refs.assertMembers(wsId, [assignee], 'assignee')
     const id = await this.ds.transaction(async em => {
+      await this.refs.lockLiveProject(em, wsId, input.project)
       const { identifiers } = await em.insert(Task, {
         workspaceId: wsId,
         projectId: input.project,
@@ -112,6 +113,7 @@ export class TasksService {
     const moved = status !== undefined && status !== task.status
     if (!moved && !Object.values(set).some(v => v !== undefined)) return this.view(wsId, id)
     await this.ds.transaction(async em => {
+      if (project !== undefined) await this.refs.lockLiveProject(em, wsId, project)
       if (moved) Object.assign(set, await this.columnChange(wsId, task, status, em))
       // Conditional on the version: of two edits racing from the same version, one gets 409.
       const res = await em.update(Task, { id, version }, { ...set, version: version + 1 })
@@ -136,6 +138,9 @@ export class TasksService {
     if (!task) throw taskNotFound()
     if (!task.deletedAt) return this.view(wsId, id)
     await this.ds.transaction(async em => {
+      // A task can't come back into a deleted project; the lock keeps the project live until commit.
+      const live = await em.query(`SELECT 1 FROM projects WHERE id = $1 AND deleted_at IS NULL FOR SHARE`, [task.projectId])
+      if (!live.length) throw new AppError(409, 'project_deleted', 'Its project was deleted, so this task can’t come back.')
       await em.update(Task, { id, deletedAt: Not(IsNull()) }, { deletedAt: null, version: () => 'version + 1' })
       await this.recordActivity(task, actor.userId, 'restored', undefined, undefined, em)
     })

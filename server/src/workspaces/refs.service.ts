@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { DataSource } from 'typeorm'
+import { DataSource, type EntityManager } from 'typeorm'
 import { AppError, type ErrorField } from '../common/http-exception.filter'
 import { UUID } from './workspace-member.guard'
 
@@ -28,6 +28,18 @@ export class WorkspaceRefs {
     if (!UUID.test(projectId)) throw invalid(field, 'Pick a project from this workspace.')
     const rows = await this.ds.query(
       `SELECT 1 FROM projects WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL`,
+      [projectId, wsId],
+    )
+    if (!rows.length) throw invalid(field, 'Pick a project from this workspace.')
+  }
+
+  /**
+   * Inside a transaction: the project is live in this workspace, and stays live until commit
+   * (FOR SHARE blocks a concurrent project delete, which locks the row FOR UPDATE).
+   */
+  async lockLiveProject(em: EntityManager, wsId: string, projectId: string, field: ErrorField = 'project'): Promise<void> {
+    const rows = await em.query(
+      `SELECT 1 FROM projects WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL FOR SHARE`,
       [projectId, wsId],
     )
     if (!rows.length) throw invalid(field, 'Pick a project from this workspace.')

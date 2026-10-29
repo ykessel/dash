@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, In, IsNull, type Repository } from 'typeorm'
 import type { Actor } from '../common/actor.decorator'
+import { CalendarService } from '../calendar/calendar.service'
 import { CLOCK, type Clock } from '../common/clock'
 import { isoDay } from '../common/dates'
 import { DomainEvents } from '../common/domain-events'
@@ -41,6 +42,7 @@ export class ProjectsService {
     @InjectRepository(ProjectPrefs) private readonly prefs: Repository<ProjectPrefs>,
     @InjectRepository(Milestone) private readonly milestones: Repository<Milestone>,
     private readonly refs: WorkspaceRefs,
+    private readonly calendar: CalendarService,
     private readonly events: DomainEvents,
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
@@ -110,8 +112,19 @@ export class ProjectsService {
   async remove(wsId: string, id: string, by: Membership, actor: Actor): Promise<void> {
     const p = await this.find(wsId, id)
     this.assertCanManage(p, by)
-    if (await this.hasLiveTasks(id)) throw new AppError(409, 'project_has_tasks', 'Move or delete this project’s tasks first.')
-    await this.projects.update({ id }, { deletedAt: this.clock.now() })
+    const unlinked = await this.ds.transaction(async em => {
+      // FOR UPDATE waits for task writes holding the project FOR SHARE, so no live task slips in after the check.
+      await em.query(`SELECT 1 FROM projects WHERE id = $1 FOR UPDATE`, [id])
+      const [{ busy }] = await em.query(
+        `SELECT EXISTS (SELECT 1 FROM tasks WHERE project_id = $1 AND deleted_at IS NULL) AS busy`, [id])
+      if (busy) throw new AppError(409, 'project_has_tasks', 'Move or delete this project’s tasks first.')
+      await em.update(Project, { id }, { deletedAt: this.clock.now() })
+      // Events keep happening; they just stop pointing at the project.
+      const rows: { id: string }[] = await em.query(`SELECT id FROM events WHERE project_id = $1 FOR UPDATE`, [id])
+      if (rows.length) await em.query(`UPDATE events SET project_id = NULL WHERE project_id = $1`, [id])
+      return rows.map(r => r.id)
+    })
+    await this.calendar.publishUpdated(wsId, unlinked, actor)
     this.events.publish('project.deleted', wsId, actor, { id })
   }
 
@@ -178,11 +191,6 @@ export class ProjectsService {
     const m = UUID.test(mid) ? await this.milestones.findOneBy({ id: mid, projectId }) : null
     if (!m) throw milestoneNotFound()
     return m
-  }
-
-  private async hasLiveTasks(projectId: string): Promise<boolean> {
-    const [{ busy }] = await this.ds.query(`SELECT EXISTS (SELECT 1 FROM tasks WHERE project_id = $1 AND deleted_at IS NULL) AS busy`, [projectId])
-    return busy
   }
 
   /** Owner, admins and the project's lead manage a project. */

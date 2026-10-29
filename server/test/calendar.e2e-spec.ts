@@ -44,6 +44,18 @@ describe('calendar', () => {
     expect((await t.db.query(`SELECT count(*)::int AS n FROM events`))[0].n).toBe(1)
   })
 
+  it('deleting a project unlinks its events and publishes event.updated', async () => {
+    const mine = (await t.http.post(`${base}/projects`).set(lin.auth).send({ name: 'Tide', hue: 'teal', icon: 'leaf', due: '2026-12-01' })).body.id
+    const e = await create({ project: mine })
+    events.length = 0
+    await t.http.delete(`${base}/projects/${mine}`).set(lin.auth).expect(204)
+    const [listed] = (await range('2026-11-01', '2026-11-30')).body
+    expect(listed).not.toHaveProperty('project')
+    expect(events.map(x => x.type)).toEqual(['event.updated', 'project.deleted'])
+    expect(events[0].data.event).toMatchObject({ id: e.id })
+    expect(events[0].data.event).not.toHaveProperty('project')
+  })
+
   it('edits an event and replaces its people', async () => {
     const e = await create({ people: [lin.user.id] })
     const res = await t.http.patch(url(e.id)).set(nia.auth).send({ start: 600, where: 'Room 2', people: [nia.user.id] }).expect(200)

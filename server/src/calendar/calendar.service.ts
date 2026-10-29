@@ -114,6 +114,11 @@ export class CalendarService {
     return this.publish('event.created', wsId, id, actor)
   }
 
+  /** Tells the team about events changed outside this service (a project delete unlinks them). */
+  async publishUpdated(wsId: string, ids: string[], actor: Actor): Promise<void> {
+    for (const id of ids) await this.publish('event.updated', wsId, id, actor)
+  }
+
   private async assertRefs(wsId: string, input: EventPatch) {
     if (input.people) await this.refs.assertMembers(wsId, input.people, 'people')
     if (input.project) await this.refs.assertProject(wsId, input.project, 'project')

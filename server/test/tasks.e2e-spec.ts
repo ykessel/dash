@@ -106,6 +106,27 @@ describe('tasks', () => {
     await t.http.delete(`${base}/projects/${projectId}`).set(lin.auth).expect(204)
   })
 
+  it('a task of a deleted project cannot be restored: 409 project_deleted', async () => {
+    const task = await create()
+    await t.http.delete(url(task.id)).set(lin.auth).expect(204)
+    await t.http.delete(`${base}/projects/${projectId}`).set(lin.auth).expect(204)
+    expect((await t.http.post(`${url(task.id)}/restore`).set(lin.auth).expect(409)).body.code).toBe('project_deleted')
+    expect((await t.http.get(url()).set(lin.auth)).body).toEqual([])
+  })
+
+  it('creating tasks while the project is deleted never leaves a live task in a deleted project', async () => {
+    for (let i = 0; i < 15; i++) {
+      const p = (await t.http.post(`${base}/projects`).set(lin.auth).send({ name: `R${i}`, hue: 'teal', icon: 'leaf', due: '2026-12-01' })).body.id
+      await Promise.all([
+        t.http.post(url()).set(nia.auth).send({ title: 'race', project: p }),
+        t.http.delete(`${base}/projects/${p}`).set(lin.auth),
+      ])
+    }
+    const [{ n }] = await t.db.query(
+      `SELECT count(*)::int AS n FROM tasks t JOIN projects p ON p.id = t.project_id WHERE t.deleted_at IS NULL AND p.deleted_at IS NOT NULL`)
+    expect(n).toBe(0)
+  })
+
   it('filters: project, assignee, status and q', async () => {
     const other = (await t.http.post(`${base}/projects`).set(lin.auth).send({ name: 'Moss', hue: 'green', icon: 'leaf', due: '2026-12-01' })).body.id
     await create({ title: 'Write docs', assignee: nia.user.id })

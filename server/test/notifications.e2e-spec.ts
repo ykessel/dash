@@ -28,6 +28,7 @@ describe('notifications', () => {
     await notify(wsA, nia, lin, 'Lin assigned you “Ship it”')
     expect(await seen).toMatchObject({
       by: lin.user.id,
+      workspaceId: wsA,
       notice: { id: expect.any(String), who: lin.user.id, text: 'Lin assigned you “Ship it”', at: expect.any(Number), read: false, to: nia.user.id },
     })
     await Promise.all([noEvent(linS, 'notification.created'), noEvent(kaiS, 'notification.created')])

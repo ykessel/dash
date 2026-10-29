@@ -13,7 +13,8 @@ export class RealtimeBridge {
   relay(e: DomainEvent) {
     const ns = this.gateway.server
     if (!ns) return
-    const payload = { by: e.actor.userId, at: e.at.toISOString(), ...e.data }
+    // workspaceId: a person in several teams hears every team's room, so each message names its team.
+    const payload = { by: e.actor.userId, at: e.at.toISOString(), workspaceId: e.workspaceId, ...e.data }
     if (e.toUser) {
       ns.to(rooms.user(e.toUser)).emit(e.type, payload)
       return
