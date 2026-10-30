@@ -17,6 +17,7 @@ import { WorkspaceRefs } from '../workspaces/refs.service'
 import { UUID } from '../workspaces/workspace-member.guard'
 import { placeOrder } from './order'
 import { type ActivityKind, Subtask, Task, TaskActivity, TaskComment } from './task.entity'
+import { taskHasLockedTime, taskHasLockedTimeError } from '../time/locks'
 import { loggedByTask } from '../time/totals'
 import { type TaskView, toTaskView } from './task-view'
 
@@ -132,12 +133,16 @@ export class TasksService {
     }
     const moved = status !== undefined && status !== task.status
     if (!moved && !Object.values(set).some(v => v !== undefined)) return this.view(wsId, id)
+    const changesProject = project !== undefined && project !== task.projectId
     await this.ds.transaction(async em => {
       if (project !== undefined) await this.refs.lockLiveProject(em, wsId, project)
+      // Hours someone already submitted or got approved stay in the project they were submitted for.
+      if (changesProject && await taskHasLockedTime(em, id)) throw taskHasLockedTimeError()
       if (moved) Object.assign(set, await this.columnChange(wsId, task, status, em))
       // Conditional on the version: of two edits racing from the same version, one gets 409.
       const res = await em.update(Task, { id, version }, { ...set, version: version + 1 })
       if (!res.affected) assertVersion(-1, version)
+      if (changesProject) await em.query(`UPDATE worklogs SET project_id = $2 WHERE task_id = $1`, [id, project])
       if (moved) await this.recordActivity(task, actor.userId, 'status', task.status, status, em)
     })
     const view = await this.publish('task.updated', wsId, id, actor)
@@ -150,6 +155,7 @@ export class TasksService {
     const task = await this.find(wsId, id)
     await this.assertCan(wsId, task, by, 'delete')
     await this.ds.transaction(async em => {
+      if (await taskHasLockedTime(em, id)) throw taskHasLockedTimeError()
       await em.update(Task, { id }, { deletedAt: this.clock.now(), version: () => 'version + 1' })
       await this.recordActivity(task, actor.userId, 'deleted', undefined, undefined, em)
     })
