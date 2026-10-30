@@ -161,12 +161,12 @@ Permisos de los roles por defecto:
 
 ### 5.2 Reglas
 
-- **Registrar** requiere `time.log` en el proyecto, que la tarea esté en `progress` y que quien
+- **Registrar** requiere `time.log` en el proyecto, que la tarea esté en `progress` o `review` y que quien
   registra sea el **responsable** de la tarea ("todo el que tenga una tarea"). Solo se registran horas
   propias; registrar en nombre de otro queda fuera del alcance. Los worklogs de un responsable anterior
   se conservan cuando la tarea cambia de manos.
 - **Editar y borrar** requieren `time.edit_own` / `time.delete_own` sobre lo propio, o `*_any` sobre lo
-  ajeno. Editar un worklog de una tarea que ya no está en `progress` se permite: la regla de estado
+  ajeno. Editar un worklog de una tarea que ya no está en `progress` ni `review` se permite: la regla de estado
   limita registrar, no corregir.
 - **Fechas** (mi propuesta): no hay registro con fecha futura, y el pasado está abierto. La aprobación
   es la que cierra períodos.
@@ -225,8 +225,8 @@ Permisos de los roles por defecto:
   - Un campo de tiempo con formato Jira (`2h 30m`, `1.5h`, `90m`; 1d = 8h), la fecha (hoy por defecto)
     y un comentario.
   - La lista de worklogs con editar y borrar.
-  - Fuera de In progress, el botón queda desactivado con el mensaje "Solo se registran horas con la
-    tarea en In progress".
+  - Fuera de In progress y Review, el botón queda desactivado con el mensaje "Solo se registran horas con la
+    tarea en In progress o Review".
 - **Timesheet** (página nueva, en la barra lateral):
   - Pestañas **Mis horas** y **Equipo**. Equipo solo aparece si hay algún proyecto con `time.view_all`.
   - La vista es Semana, con navegación ‹ ›. Muestra filas de tareas agrupadas por proyecto y columnas
@@ -234,7 +234,7 @@ Permisos de los roles por defecto:
   - Clic en una celda edita las horas de ese día. Una celda con varios worklogs abre la lista.
   - Cada proyecto muestra un chip de estado (Abierto · semanal / Enviado / Aprobado 🔒 / sin
     aprobación) y el botón "Enviar para aprobación".
-  - "+ Agregar tarea a la semana" ofrece las tareas en In progress del usuario.
+  - "+ Agregar tarea a la semana" ofrece las tareas del usuario en In progress o Review.
   - En Equipo, por proyecto: personas × días, el estado y las acciones Aprobar, Rechazar y Reabrir. Clic
     en una persona abre su detalle.
 - **Reportes**:
