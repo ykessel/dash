@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useMemo, useState } from 'react'
+import { type KeyboardEvent, useMemo, useState } from 'react'
 import { Icon } from '../components/Icon'
 import { Avatar, Seg } from '../components/ui'
 import type { Project, TimePeriod, TimesheetData, Worklog } from '../data/types'
@@ -6,11 +6,12 @@ import { short, todayIso } from '../lib/date'
 import { formatMinutes, parseDuration } from '../lib/duration'
 import { addDaysIso, periodStartOf, weekStart } from '../lib/periods'
 import { useStore } from '../store'
+import { TimeCalendar } from './TimeCalendar'
 import { TimeReports } from './TimeReports'
+import { hm, locked, sum, useSheet } from './timeShared'
 
-type Tab = 'mine' | 'team' | 'reports'
+type Tab = 'mine' | 'calendar' | 'team' | 'reports'
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const EMPTY: TimesheetData = { worklogs: [], periods: [], tasks: [] }
 
 /** Weekly timesheet, Tempo style: my grid, the team's hours to approve, and reports. */
 export function Timesheet() {
@@ -19,7 +20,7 @@ export function Timesheet() {
   const [week, setWeek] = useState(() => weekStart(todayIso()))
   const team = data.projects.some(p => can(p.id, 'time.view_all'))
 
-  const options: { value: Tab; label: string }[] = [{ value: 'mine', label: 'My time' }]
+  const options: { value: Tab; label: string }[] = [{ value: 'mine', label: 'My time' }, { value: 'calendar', label: 'Calendar' }]
   if (team) options.push({ value: 'team', label: 'Team' })
   options.push({ value: 'reports', label: 'Reports' })
 
@@ -31,9 +32,9 @@ export function Timesheet() {
       </header>
       <div className="page-bar">
         <Seg value={tab === 'team' && !team ? 'mine' : tab} onChange={setTab} options={options} label="View" />
-        {tab !== 'reports' && <WeekNav week={week} onChange={setWeek} />}
+        {(tab === 'mine' || tab === 'team') && <WeekNav week={week} onChange={setWeek} />}
       </div>
-      {tab === 'reports' ? <TimeReports /> : tab === 'team' && team ? <TeamWeek week={week} /> : <MyWeek week={week} />}
+      {tab === 'reports' ? <TimeReports /> : tab === 'calendar' ? <TimeCalendar /> : tab === 'team' && team ? <TeamWeek week={week} /> : <MyWeek week={week} />}
     </>
   )
 }
@@ -50,27 +51,7 @@ function WeekNav({ week, onChange }: { week: string; onChange: (w: string) => vo
   )
 }
 
-/** The week's data for `user`, refetched whenever time changes somewhere I can hear about. */
-function useSheet(week: string, user: string) {
-  const { timesheet, timeTick } = useStore()
-  const [sheet, setSheet] = useState<TimesheetData>(EMPTY)
-  const [loading, setLoading] = useState(true)
-  useEffect(() => {
-    let live = true
-    setLoading(true)
-    timesheet({ from: week, to: addDaysIso(week, 6), user })
-      .then(s => { if (live) setSheet(s) })
-      .catch(() => { if (live) setSheet(EMPTY) })
-      .finally(() => { if (live) setLoading(false) })
-    return () => { live = false }
-  }, [week, user, timeTick, timesheet])
-  return { sheet, loading }
-}
-
 const days = (week: string) => DAYS.map((_, i) => addDaysIso(week, i))
-const sum = (ws: Worklog[]) => ws.reduce((s, w) => s + w.minutes, 0)
-/** Blank for an empty day so the grid reads at a glance. */
-const hm = (m: number) => (m ? formatMinutes(m) : '')
 
 /** The approval row for this person, project and week: the period holding the week's Monday. */
 function periodOf(p: Project, user: string, week: string, periods: TimePeriod[]): { start: string; row: TimePeriod | undefined } {
@@ -78,15 +59,12 @@ function periodOf(p: Project, user: string, week: string, periods: TimePeriod[])
   return { start, row: periods.find(x => x.project === p.id && x.user === user && x.start <= week && x.end >= week) }
 }
 
-/** Same rule as the server: once approval is off, old rows lock nothing. */
-const locked = (p: Project, periods: TimePeriod[], user: string, day: string) =>
-  p.approvalEnabled && periods.some(x => x.project === p.id && x.user === user && x.status !== 'rejected' && x.start <= day && x.end >= day)
 
 /* ---------------- My time ---------------- */
 
 function MyWeek({ week }: { week: string }) {
   const { data, me, project: projectOf, submitPeriod, withdrawPeriod } = useStore()
-  const { sheet, loading } = useSheet(week, 'me')
+  const { sheet, loading } = useSheet(week, addDaysIso(week, 6), 'me')
   const [added, setAdded] = useState<string[]>([])
   const ds = days(week)
   const today = todayIso()
@@ -238,7 +216,7 @@ function Cell({ task, day, logs, disabled, canCreate }: { task: string; day: str
 
 function TeamWeek({ week }: { week: string }) {
   const { data, can } = useStore()
-  const { sheet, loading } = useSheet(week, 'team')
+  const { sheet, loading } = useSheet(week, addDaysIso(week, 6), 'team')
   const projects = data.projects.filter(p => can(p.id, 'time.view_all'))
   const shown = projects.filter(p => p.approvalEnabled || sheet.worklogs.some(w => w.project === p.id) || sheet.periods.some(x => x.project === p.id))
   if (!loading && shown.length === 0) {
