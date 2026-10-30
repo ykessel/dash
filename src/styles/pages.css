@@ -953,11 +953,20 @@ html.is-card-dragging, html.is-card-dragging * { cursor: grabbing !important; us
 .ts-grid tbody th, .ts-grid tfoot th { text-align: left; font-weight: 500; }
 .ts-grid tfoot td, .ts-grid tfoot th { font-weight: 700; }
 .ts-grid .is-today { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.ts-grid thead .is-today, .ts-grid tfoot .is-today { color: var(--accent-ink); }
+.ts-grid .is-we { background: var(--fill-hover); color: var(--text-3); }
+.ts-grid .ts-head-task { text-align: left; }
+.ts-grid th.ts-total { text-align: right; }
+.ts-grid td.ts-total { text-align: right; font-weight: 600; }
+.ts-grid tfoot .ts-total { font-weight: 700; }
 .ts-task { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
-.ts-total { font-weight: 700; }
-.ts-proj th { text-align: left; background: var(--fill); }
+.ts-total { text-align: right; }
+.ts-proj th { text-align: left; padding-top: 14px; padding-bottom: 8px; border-top-color: transparent; }
+.ts-grid tbody + tbody .ts-proj th { border-top: 1px solid var(--sep); }
+.ts-proj th:first-child { box-shadow: inset 3px 0 0 var(--hue, var(--accent)); }
+.ts-proj__sum { color: var(--text-2); font-weight: 600 !important; }
 .ts-proj th > * { vertical-align: middle; margin-right: 10px; }
-.ts-proj__name { font-weight: 700; }
+.ts-proj__name { font-weight: 700; font-size: var(--fs-md); }
 .ts-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 99px; font-size: var(--fs-sm); background: var(--fill-2); color: var(--text-2); font-weight: 600; white-space: nowrap; }
 .ts-chip.is-sub { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent-ink); }
 .ts-chip.is-ok { background: color-mix(in srgb, var(--green, #34c759) 20%, transparent); color: var(--text); }
@@ -966,9 +975,8 @@ html.is-card-dragging, html.is-card-dragging * { cursor: grabbing !important; us
 button.ts-cell:hover { background: var(--fill-hover); box-shadow: inset 0 0 0 1px var(--sep); }
 .ts-cell.is-off { color: var(--text-2); }
 .ts-cell.is-locked { opacity: .6; }
-.ts-cell.is-multi small { font-size: 11px; color: var(--text-2); }
 .ts-input { width: 72px; min-height: 30px; height: 30px; padding: 0 8px; text-align: center; }
-.ts-add { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: var(--text-2); }
+.ts-add { display: flex; align-items: center; gap: 8px; color: var(--text-2); }
 .ts-add select { max-width: 360px; }
 .ts-who { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
 .ts-actions { text-align: right !important; }
@@ -977,6 +985,23 @@ button.ts-cell:hover { background: var(--fill-hover); box-shadow: inset 0 0 0 1p
 .ts-sub th { padding-left: 42px; }
 .ts-reject form { display: flex; gap: 8px; align-items: center; }
 .ts-reject .input { flex: 1; }
+.ts-chip.is-quiet { background: transparent; box-shadow: inset 0 0 0 1px var(--sep); color: var(--text-3); }
+.ts-chipbtn { display: inline-flex; align-items: center; gap: 2px; border-radius: 99px; color: var(--text-2); transition: background-color .15s; }
+.ts-chipbtn:hover, .ts-chipbtn[aria-expanded='true'] { background: var(--fill-hover); }
+.ts-chipbtn .ico { margin-right: 6px; }
+.ts-cell.is-empty::after { content: '+'; font-size: 17px; color: var(--text-3); opacity: 0; transition: opacity .15s; }
+button.ts-cell:hover::after, button.ts-cell:focus-visible::after { opacity: 1; }
+button.ts-cell:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--accent); }
+.ts-cell.is-multi small { display: inline-grid; place-items: center; min-width: 16px; height: 16px; margin-left: 4px; padding: 0 4px; border-radius: 99px; background: var(--fill-2); font-size: 11px; font-weight: 600; }
+.ts-cell.is-locked { cursor: not-allowed; }
+.ts-daybar { margin: 5px auto 0; max-width: 64px; height: 3px; }
+.ts-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.ts-stat { min-width: 168px; }
+.ts-stat .bar { height: 4px; margin-top: 6px; }
+.ts-addrow td { text-align: left; padding: 10px; }
+.ts-entries { min-width: 260px; }
+.ts-entry { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; padding: 8px 12px; font-size: var(--fs-md); }
+.ts-entry span { color: var(--text-2); }
 .ts-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
 .ts-date { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--text-2); }
 .ts-date .input { width: 150px; min-height: 32px; height: 32px; }
