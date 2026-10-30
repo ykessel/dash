@@ -501,9 +501,13 @@ select.input option { background: var(--glass-solid); color: var(--text); }
   inset: 0;
   z-index: 100;
   background: var(--scrim);
+  /* A light frost so the page behind recedes without vanishing. */
+  -webkit-backdrop-filter: blur(6px) saturate(1.1);
+  backdrop-filter: blur(6px) saturate(1.1);
   animation: fade 0.3s var(--ease) backwards;
 }
 .scrim.is-out { animation: fade 0.25s var(--ease) reverse both; }
+:root.is-solid .scrim { -webkit-backdrop-filter: none; backdrop-filter: none; }
 
 /* Modal: centred card. Its open/close motion is driven from JS (clip-path reveal). */
 .modal {
