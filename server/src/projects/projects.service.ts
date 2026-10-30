@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { DataSource, In, IsNull, type Repository } from 'typeorm'
+import { DataSource, In, IsNull, Not, type Repository } from 'typeorm'
+import { memberRoleId } from '../access/roles.seed'
 import type { Actor } from '../common/actor.decorator'
 import { CalendarService } from '../calendar/calendar.service'
 import { CLOCK, type Clock } from '../common/clock'
@@ -64,6 +65,7 @@ export class ProjectsService {
     await this.refs.assertMembers(wsId, input.members ?? [], 'members')
     const memberIds = [...new Set([lead, ...(input.members ?? [actor.userId])])]
     const id = await this.ds.transaction(async em => {
+      const roleId = await memberRoleId(em, wsId)
       const { identifiers } = await em.insert(Project, {
         workspaceId: wsId,
         name: input.name,
@@ -74,9 +76,10 @@ export class ProjectsService {
         startDate: input.start ?? isoDay(this.clock.now()),
         dueDate: input.due,
         leadId: lead,
+        defaultRoleId: roleId,
       })
       const projectId = identifiers[0].id as string
-      await em.insert(ProjectMember, memberIds.map(userId => ({ projectId, userId })))
+      await em.insert(ProjectMember, memberIds.map(userId => ({ projectId, userId, roleId })))
       await em.insert(Milestone, { projectId, title: 'Kickoff', dueDate: input.due, position: 0 })
       return projectId
     })
@@ -103,7 +106,11 @@ export class ProjectsService {
       // Conditional on the version: of two edits racing from the same version, one gets 409.
       const res = await em.update(Project, { id, version }, { ...set, version: version + 1 })
       if (!res.affected) assertVersion(-1, version)
-      if (lead !== undefined) await em.upsert(ProjectMember, { projectId: id, userId: lead }, ['projectId', 'userId'])
+      // A new lead keeps the role they already hold here; a newcomer gets the project's default.
+      if (lead !== undefined) {
+        await em.createQueryBuilder().insert().into(ProjectMember)
+          .values({ projectId: id, userId: lead, roleId: p.defaultRoleId }).orIgnore().execute()
+      }
     })
     return this.publishUpdated(wsId, id, actor)
   }
@@ -128,15 +135,18 @@ export class ProjectsService {
     this.events.publish('project.deleted', wsId, actor, { id })
   }
 
-  /** Replaces the member list; the lead is always kept. */
+  /** Replaces the member list; the lead is always kept, people who stay keep their role, newcomers get the default. */
   async setMembers(wsId: string, id: string, userIds: string[], by: Membership, actor: Actor): Promise<ProjectView> {
     const p = await this.find(wsId, id)
     this.assertCanManage(p, by)
     await this.refs.assertMembers(wsId, userIds, 'members')
     const ids = [...new Set([...(p.leadId ? [p.leadId] : []), ...userIds])]
     await this.ds.transaction(async em => {
-      await em.delete(ProjectMember, { projectId: id })
-      if (ids.length) await em.insert(ProjectMember, ids.map(userId => ({ projectId: id, userId })))
+      await em.delete(ProjectMember, ids.length ? { projectId: id, userId: Not(In(ids)) } : { projectId: id })
+      if (ids.length) {
+        await em.createQueryBuilder().insert().into(ProjectMember)
+          .values(ids.map(userId => ({ projectId: id, userId, roleId: p.defaultRoleId }))).orIgnore().execute()
+      }
     })
     return this.publishUpdated(wsId, id, actor)
   }

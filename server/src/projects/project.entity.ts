@@ -13,6 +13,8 @@ export class Project {
   @Column({ name: 'start_date', type: 'date' }) startDate: string
   @Column({ name: 'due_date', type: 'date' }) dueDate: string
   @Column({ name: 'lead_id', type: 'uuid', nullable: true }) leadId: string | null
+  /** The role of workspace members who aren't on the project's list (Jira's "open" access). */
+  @Column({ name: 'default_role_id', type: 'uuid' }) defaultRoleId: string
   @Column({ type: 'int', default: 1 }) version: number
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) createdAt: Date
   @Column({ name: 'deleted_at', type: 'timestamptz', nullable: true }) deletedAt: Date | null
@@ -22,6 +24,7 @@ export class Project {
 export class ProjectMember {
   @PrimaryColumn({ name: 'project_id', type: 'uuid' }) projectId: string
   @PrimaryColumn({ name: 'user_id', type: 'uuid' }) userId: string
+  @Column({ name: 'role_id', type: 'uuid' }) roleId: string
 }
 
 /** Pinned and starred belong to each person, not to the project. */
