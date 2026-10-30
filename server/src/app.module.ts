@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core'
 import { EventEmitterModule } from '@nestjs/event-emitter'
 import { ThrottlerModule } from '@nestjs/throttler'
 import { LoggerModule } from 'nestjs-pino'
+import { AccessModule } from './access/access.module'
 import { AuthModule } from './auth/auth.module'
 import { ClockModule } from './common/clock'
 import { DomainEventsModule } from './common/domain-events'
@@ -47,6 +48,7 @@ import { WorkspacesModule } from './workspaces/workspaces.module'
     WorkspacesModule,
     RealtimeModule,
     ProjectsModule,
+    AccessModule,
     TasksModule,
     CalendarModule,
     NotificationsModule,
