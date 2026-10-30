@@ -65,7 +65,9 @@ export class RolesService {
         throw isUniqueViolation(e) ? nameTaken() : e
       }
     }
-    return this.publish('role.updated', wsId, r.id, actor)
+    const view = await this.publish('role.updated', wsId, r.id, actor)
+    this.events.publish('project.access_changed', wsId, actor, { projectId: null })
+    return view
   }
 
   /** "Viewer copy", then "Viewer copy 2", 3…: a duplicate is a new, editable role. */
@@ -96,6 +98,7 @@ export class RolesService {
       await em.delete(ProjectRole, { id: r.id })
     })
     this.events.publish('role.deleted', wsId, actor, { id: r.id })
+    this.events.publish('project.access_changed', wsId, actor, { projectId: null })
   }
 
   private async insert(wsId: string, name: string, description: string, permissions: Permission[]): Promise<string> {

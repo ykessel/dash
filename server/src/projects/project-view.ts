@@ -1,5 +1,5 @@
 import type { Hue, ProjectIcon, ProjectStatus } from '../common/enums'
-import type { Milestone, Project, ProjectPrefs } from './project.entity'
+import type { Milestone, Project, ProjectMember, ProjectPrefs } from './project.entity'
 
 export interface MilestoneView {
   id: string
@@ -20,6 +20,10 @@ export interface ProjectView {
   due: string
   lead: string
   members: string[]
+  /** Each member's project role id. */
+  roles: Record<string, string>
+  /** The role of workspace members who aren't on the list. */
+  defaultRole: string
   pinned: boolean
   starred: boolean
   milestones: MilestoneView[]
@@ -28,7 +32,7 @@ export interface ProjectView {
 
 export const toMilestoneView = (m: Milestone): MilestoneView => ({ id: m.id, title: m.title, due: m.dueDate, done: m.done })
 
-export function toProjectView(p: Project, memberIds: string[], milestones: Milestone[], prefs?: ProjectPrefs | null): ProjectView {
+export function toProjectView(p: Project, members: ProjectMember[], milestones: Milestone[], prefs?: ProjectPrefs | null): ProjectView {
   return {
     id: p.id,
     name: p.name,
@@ -39,7 +43,9 @@ export function toProjectView(p: Project, memberIds: string[], milestones: Miles
     start: p.startDate,
     due: p.dueDate,
     lead: p.leadId ?? '',
-    members: memberIds,
+    members: members.map(m => m.userId),
+    roles: Object.fromEntries(members.map(m => [m.userId, m.roleId])),
+    defaultRole: p.defaultRoleId,
     pinned: prefs?.pinned ?? false,
     starred: prefs?.starred ?? false,
     milestones: [...milestones].sort((a, b) => a.position - b.position).map(toMilestoneView),

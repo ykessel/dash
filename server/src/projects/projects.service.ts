@@ -1,6 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, In, IsNull, Not, type Repository } from 'typeorm'
+import { AccessService } from '../access/access.service'
+import { covers, type Permission, parsePermissions } from '../access/permissions'
+import { ProjectRole } from '../access/project-role.entity'
+import { RolesService } from '../access/roles.service'
 import { memberRoleId } from '../access/roles.seed'
 import type { Actor } from '../common/actor.decorator'
 import { CalendarService } from '../calendar/calendar.service'
@@ -29,7 +33,7 @@ export interface ProjectInput {
   members?: string[]
 }
 
-export type ProjectPatch = Partial<Omit<ProjectInput, 'members'>> & { version: number }
+export type ProjectPatch = Partial<Omit<ProjectInput, 'members'>> & { version: number; defaultRole?: string }
 
 const projectNotFound = () => new AppError(404, 'project_not_found', 'That project doesn’t exist.')
 const milestoneNotFound = () => new AppError(404, 'milestone_not_found', 'That milestone doesn’t exist.')
@@ -46,6 +50,8 @@ export class ProjectsService {
     private readonly calendar: CalendarService,
     private readonly events: DomainEvents,
     @Inject(CLOCK) private readonly clock: Clock,
+    private readonly access: AccessService,
+    private readonly roles: RolesService,
   ) {}
 
   /** Live projects of the workspace, oldest first, with the caller's pinned/starred. */
@@ -90,16 +96,21 @@ export class ProjectsService {
 
   async update(wsId: string, id: string, patch: ProjectPatch, by: Membership, actor: Actor): Promise<ProjectView> {
     const p = await this.find(wsId, id)
-    this.assertCanManage(p, by)
+    const have = await this.access.assert(wsId, id, by, 'project.admin')
     assertVersion(p.version, patch.version)
-    const { version, desc, start, due, lead, ...rest } = patch
+    const { version, desc, start, due, lead, defaultRole, ...rest } = patch
     if (lead !== undefined) await this.refs.assertMembers(wsId, [lead], 'lead')
+    if (defaultRole !== undefined) {
+      const next = await this.roles.find(wsId, defaultRole, 'defaultRole')
+      this.assertCanGrant(have, next, await this.role(p.defaultRoleId))
+    }
     const set: Partial<Project> = {
       ...rest,
       ...(desc !== undefined ? { description: desc } : {}),
       ...(start !== undefined ? { startDate: start } : {}),
       ...(due !== undefined ? { dueDate: due } : {}),
       ...(lead !== undefined ? { leadId: lead } : {}),
+      ...(defaultRole !== undefined ? { defaultRoleId: defaultRole } : {}),
     }
     if (!Object.values(set).some(v => v !== undefined)) return this.get(wsId, id, actor.userId)
     await this.ds.transaction(async em => {
@@ -112,13 +123,15 @@ export class ProjectsService {
           .values({ projectId: id, userId: lead, roleId: p.defaultRoleId }).orIgnore().execute()
       }
     })
-    return this.publishUpdated(wsId, id, actor)
+    const view = await this.publishUpdated(wsId, id, actor)
+    if ((lead !== undefined && lead !== p.leadId) || (defaultRole !== undefined && defaultRole !== p.defaultRoleId)) this.accessChanged(wsId, id, actor)
+    return view
   }
 
   /** Soft delete; a project with live tasks has to be emptied first. */
   async remove(wsId: string, id: string, by: Membership, actor: Actor): Promise<void> {
-    const p = await this.find(wsId, id)
-    this.assertCanManage(p, by)
+    await this.find(wsId, id)
+    await this.access.assert(wsId, id, by, 'project.admin')
     const unlinked = await this.ds.transaction(async em => {
       // FOR UPDATE waits for task writes holding the project FOR SHARE, so no live task slips in after the check.
       await em.query(`SELECT 1 FROM projects WHERE id = $1 FOR UPDATE`, [id])
@@ -138,9 +151,11 @@ export class ProjectsService {
   /** Replaces the member list; the lead is always kept, people who stay keep their role, newcomers get the default. */
   async setMembers(wsId: string, id: string, userIds: string[], by: Membership, actor: Actor): Promise<ProjectView> {
     const p = await this.find(wsId, id)
-    this.assertCanManage(p, by)
+    const have = await this.access.assert(wsId, id, by, 'project.admin')
     await this.refs.assertMembers(wsId, userIds, 'members')
     const ids = [...new Set([...(p.leadId ? [p.leadId] : []), ...userIds])]
+    const leaving = (await this.members.findBy({ projectId: id })).filter(m => !ids.includes(m.userId))
+    this.assertCanGrant(have, ...(await this.rolesOf(leaving.map(m => m.roleId))), await this.role(p.defaultRoleId))
     await this.ds.transaction(async em => {
       await em.delete(ProjectMember, ids.length ? { projectId: id, userId: Not(In(ids)) } : { projectId: id })
       if (ids.length) {
@@ -148,7 +163,38 @@ export class ProjectsService {
           .values(ids.map(userId => ({ projectId: id, userId, roleId: p.defaultRoleId }))).orIgnore().execute()
       }
     })
-    return this.publishUpdated(wsId, id, actor)
+    const view = await this.publishUpdated(wsId, id, actor)
+    this.accessChanged(wsId, id, actor)
+    return view
+  }
+
+  /** Adds someone to the project with a role, or changes their role. */
+  async setMember(wsId: string, id: string, userId: string, roleId: string, by: Membership, actor: Actor): Promise<ProjectView> {
+    await this.find(wsId, id)
+    const have = await this.access.assert(wsId, id, by, 'project.admin')
+    await this.refs.assertMembers(wsId, [userId], 'members')
+    const next = await this.roles.find(wsId, roleId)
+    const current = await this.members.findOneBy({ projectId: id, userId })
+    this.assertCanGrant(have, next, ...(current ? [await this.role(current.roleId)] : []))
+    await this.members.upsert({ projectId: id, userId, roleId: next.id }, ['projectId', 'userId'])
+    const view = await this.publishUpdated(wsId, id, actor)
+    this.accessChanged(wsId, id, actor)
+    return view
+  }
+
+  /** Takes someone off the list; they fall back to the project's default role. The lead stays. */
+  async removeMember(wsId: string, id: string, userId: string, by: Membership, actor: Actor): Promise<ProjectView> {
+    const p = await this.find(wsId, id)
+    const have = await this.access.assert(wsId, id, by, 'project.admin')
+    if (p.leadId === userId) throw new AppError(409, 'lead_is_member', 'The lead stays on the project. Pick another lead first.')
+    const current = UUID.test(userId) ? await this.members.findOneBy({ projectId: id, userId }) : null
+    if (current) {
+      this.assertCanGrant(have, await this.role(current.roleId), await this.role(p.defaultRoleId))
+      await this.members.delete({ projectId: id, userId })
+    }
+    const view = await this.publishUpdated(wsId, id, actor)
+    this.accessChanged(wsId, id, actor)
+    return view
   }
 
   /** The caller's own pinned/starred; nobody else sees it, so nothing is published. */
@@ -163,8 +209,8 @@ export class ProjectsService {
   }
 
   async addMilestone(wsId: string, id: string, input: { title: string; due: string; done?: boolean }, by: Membership, actor: Actor): Promise<MilestoneView> {
-    const p = await this.find(wsId, id)
-    this.assertCanManage(p, by)
+    await this.find(wsId, id)
+    await this.access.assert(wsId, id, by, 'project.admin')
     const [{ next }] = await this.ds.query(`SELECT coalesce(max(position) + 1, 0)::int AS next FROM milestones WHERE project_id = $1`, [id])
     const { identifiers } = await this.milestones.insert({ projectId: id, title: input.title, dueDate: input.due, done: input.done ?? false, position: next })
     await this.publishMilestones(wsId, id, actor)
@@ -172,8 +218,8 @@ export class ProjectsService {
   }
 
   async updateMilestone(wsId: string, id: string, mid: string, patch: { title?: string; due?: string; done?: boolean }, by: Membership, actor: Actor): Promise<MilestoneView> {
-    const p = await this.find(wsId, id)
-    this.assertCanManage(p, by)
+    await this.find(wsId, id)
+    await this.access.assert(wsId, id, by, 'project.admin')
     const m = await this.findMilestone(id, mid)
     const set = { title: patch.title, dueDate: patch.due, done: patch.done }
     if (Object.values(set).some(v => v !== undefined)) {
@@ -184,8 +230,8 @@ export class ProjectsService {
   }
 
   async removeMilestone(wsId: string, id: string, mid: string, by: Membership, actor: Actor): Promise<void> {
-    const p = await this.find(wsId, id)
-    this.assertCanManage(p, by)
+    await this.find(wsId, id)
+    await this.access.assert(wsId, id, by, 'project.admin')
     const m = await this.findMilestone(id, mid)
     await this.milestones.delete({ id: m.id })
     await this.publishMilestones(wsId, id, actor)
@@ -203,9 +249,25 @@ export class ProjectsService {
     return m
   }
 
-  /** Owner, admins and the project's lead manage a project. */
-  private assertCanManage(p: Project, by: Membership) {
-    if (by.role === 'member' && p.leadId !== by.userId) throw forbidden()
+  /**
+   * No escalation: whoever gives, changes or takes away a role must already hold everything in it
+   * (and in the role it replaces), so a lead can't hand out or strip more than they have.
+   */
+  private assertCanGrant(have: Set<Permission>, ...roles: ProjectRole[]) {
+    if (!roles.every(r => covers(have, parsePermissions(r.permissions)))) throw forbidden()
+  }
+
+  private role(id: string): Promise<ProjectRole> {
+    return this.ds.getRepository(ProjectRole).findOneByOrFail({ id })
+  }
+
+  private rolesOf(ids: string[]): Promise<ProjectRole[]> {
+    return ids.length ? this.ds.getRepository(ProjectRole).findBy({ id: In([...new Set(ids)]) }) : Promise.resolve([])
+  }
+
+  /** Clients refetch their own permissions; the event says nothing about who can do what. */
+  private accessChanged(wsId: string, projectId: string, actor: Actor) {
+    this.events.publish('project.access_changed', wsId, actor, { projectId })
   }
 
   private async views(rows: Project[], userId: string): Promise<ProjectView[]> {
@@ -218,7 +280,7 @@ export class ProjectsService {
     ])
     return rows.map(p => toProjectView(
       p,
-      members.filter(m => m.projectId === p.id).map(m => m.userId),
+      members.filter(m => m.projectId === p.id),
       milestones.filter(m => m.projectId === p.id),
       prefs.find(x => x.projectId === p.id),
     ))
