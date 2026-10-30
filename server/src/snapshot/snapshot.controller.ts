@@ -1,6 +1,7 @@
 import { Controller, Get, Param, UseGuards } from '@nestjs/common'
 import { JwtAuthGuard } from '../auth/jwt-auth.guard'
-import { Actor } from '../common/actor.decorator'
+import type { Membership } from '../workspaces/membership.entity'
+import { CurrentMembership } from '../workspaces/roles.decorator'
 import { WorkspaceMemberGuard } from '../workspaces/workspace-member.guard'
 import { SnapshotService } from './snapshot.service'
 
@@ -10,7 +11,7 @@ export class SnapshotController {
   constructor(private readonly snapshot: SnapshotService) {}
 
   @Get()
-  get(@Param('wsId') wsId: string, @Actor() actor: Actor) {
-    return this.snapshot.get(wsId, actor.userId)
+  get(@Param('wsId') wsId: string, @CurrentMembership() m: Membership) {
+    return this.snapshot.get(wsId, m)
   }
 }
