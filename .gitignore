@@ -7,3 +7,6 @@ dist
 # Local env files hold credentials (Neon, Resend…); only the example is tracked.
 .env*
 !.env.example
+
+# Brainstorm mockups and plan workspaces (local scratch)
+.superpowers/
