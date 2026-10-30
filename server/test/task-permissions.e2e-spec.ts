@@ -88,6 +88,12 @@ describe('task permissions', () => {
     await t.http.post(`${base}/tasks`).set(nia.auth).send({ title: 'x', project: p.id }).expect(201)
   })
 
+  it('creating a task assigned to yourself needs only tasks.create', async () => {
+    const p = await project(lin)
+    await give(p.id, await customRole(['tasks.create']))
+    await t.http.post(`${base}/tasks`).set(nia.auth).send({ title: 'x', project: p.id, assignee: nia.user.id }).expect(201)
+  })
+
   it("comments.delete_any lets the owner remove someone else's comment", async () => {
     const p = await project(lin)
     const x = await task(lin, p.id)

@@ -74,9 +74,11 @@ function Field({ label, children, full }: { label: string; children: ReactNode; 
 }
 
 function TaskForm({ preset, onDone }: { preset?: Partial<import('../data/types').Task>; onDone: () => void }) {
-  const { data, me, addTask, notify, openModal } = useStore()
+  const { data, me, addTask, notify, openModal, can } = useStore()
+  // Only projects I may add tasks to; one I have no permissions for yet is left to the server.
+  const open = data.projects.filter(p => !data.access[p.id] || can(p.id, 'tasks.create'))
   const [title, setTitle] = useState(preset?.title ?? '')
-  const [projectId, setProject] = useState(preset?.project ?? data.projects[0]?.id ?? '')
+  const [projectId, setProject] = useState(open.some(p => p.id === preset?.project) ? preset!.project! : open[0]?.id ?? '')
   const [assignee, setAssignee] = useState(preset?.assignee ?? me.id)
   const [priority, setPriority] = useState<Priority>(preset?.priority ?? 'medium')
   const [due, setDue] = useState(preset?.due ?? offset(2))
@@ -94,11 +96,20 @@ function TaskForm({ preset, onDone }: { preset?: Partial<import('../data/types')
       </div>
     )
   }
+  if (!open.length) {
+    return (
+      <div className="mform">
+        <FormHead title="New task" onClose={onDone} submit={null} />
+        <p className="mform__empty">Your role doesn’t let you add tasks to any project. Ask a project lead.</p>
+      </div>
+    )
+  }
 
+  const assignable = (id: string) => id === me.id || !data.access[projectId] || can(projectId, 'tasks.assign')
   const submit = (e: FormEvent) => {
     e.preventDefault()
     if (!title.trim()) { setErr(true); return }
-    const t = addTask({ title: title.trim(), project: projectId, assignee, priority, due, status, estimate })
+    const t = addTask({ title: title.trim(), project: projectId, assignee: assignable(assignee) ? assignee : me.id, priority, due, status, estimate })
     onDone()
     notify(`Added “${t.title}”`, 'ok')
   }
@@ -111,12 +122,13 @@ function TaskForm({ preset, onDone }: { preset?: Partial<import('../data/types')
         </Field>
         <Field label="Project">
           <select className="input" value={projectId} onChange={e => setProject(e.target.value)}>
-            {data.projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {open.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </Field>
         <Field label="Assignee">
-          <select className="input" value={assignee} onChange={e => setAssignee(e.target.value)}>
-            {data.people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          <select className="input" value={assignable(assignee) ? assignee : me.id} onChange={e => setAssignee(e.target.value)}>
+            {/* Without tasks.assign I can only take the task myself. */}
+            {data.people.filter(p => assignable(p.id)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </Field>
         <Field label="Priority">
@@ -331,7 +343,7 @@ function DrawerPanel({ leaving, onClose, children }: { leaving: boolean; onClose
 }
 
 function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
-  const { data, person, project, moveTask, removeTask, startFocus, toggleDone, addSubtask, toggleSubtask, addComment: comment } = useStore()
+  const { data, person, project, moveTask, removeTask, startFocus, toggleDone, addSubtask, toggleSubtask, addComment: comment, can, canTask } = useStore()
   const t = data.tasks.find(x => x.id === id)
   const [sub, setSub] = useState('')
   const [msg, setMsg] = useState('')
@@ -339,6 +351,7 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const p = project(t.project)
   const a = person(t.assignee)
   const doneSubs = t.subtasks.filter(s => s.done).length
+  const may = { edit: canTask(t, 'edit'), del: canTask(t, 'delete'), move: !data.access[t.project] || can(t.project, 'tasks.transition'), talk: !data.access[t.project] || can(t.project, 'comments.add') }
 
   const addSub = (e: FormEvent) => {
     e.preventDefault()
@@ -366,7 +379,7 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
       <Seg
         block
         value={t.status}
-        onChange={s => moveTask(t.id, s, 'top')}
+        onChange={s => { if (may.move) moveTask(t.id, s, 'top') }}
         options={(Object.keys(STATUS_LABEL) as Status[]).map(s => ({ value: s, label: STATUS_LABEL[s] }))}
         label="Status"
       />
@@ -382,17 +395,19 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
         {t.subtasks.length > 0 && (
           <ul className="tp__subs">
             {t.subtasks.map(s => (
-              <li className="tp-sub" key={s.id} onClick={() => toggleSub(s.id)}>
-                <Check on={s.done} label={s.title} onToggle={() => toggleSub(s.id)} />
+              <li className={`tp-sub ${may.edit ? '' : 'is-readonly'}`} key={s.id} onClick={() => may.edit && toggleSub(s.id)}>
+                <Check on={s.done} label={s.title} onToggle={() => may.edit && toggleSub(s.id)} />
                 <span className={s.done ? 'is-done' : ''}>{s.title}</span>
               </li>
             ))}
           </ul>
         )}
-        <form className="tp__add" onSubmit={addSub}>
-          <input className="input" value={sub} onChange={e => setSub(e.target.value)} placeholder="Add a subtask" aria-label="Add a subtask" />
-          <button className="btn btn--glass btn--sm">Add</button>
-        </form>
+        {may.edit && (
+          <form className="tp__add" onSubmit={addSub}>
+            <input className="input" value={sub} onChange={e => setSub(e.target.value)} placeholder="Add a subtask" aria-label="Add a subtask" />
+            <button className="btn btn--glass btn--sm">Add</button>
+          </form>
+        )}
       </section>
 
       <section className="tp__block">
@@ -413,18 +428,22 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
             })}
           </ul>
         )}
-        <form className="tp__add" onSubmit={addComment}>
-          <input className="input" value={msg} onChange={e => setMsg(e.target.value)} placeholder="Write a comment" aria-label="Write a comment" />
-          <button className="btn btn--glass btn--sm">Post</button>
-        </form>
+        {may.talk && (
+          <form className="tp__add" onSubmit={addComment}>
+            <input className="input" value={msg} onChange={e => setMsg(e.target.value)} placeholder="Write a comment" aria-label="Write a comment" />
+            <button className="btn btn--glass btn--sm">Post</button>
+          </form>
+        )}
       </section>
 
       <footer className="tp__foot">
         <button className="btn btn--glass" onClick={() => { startFocus(undefined, t.title, t.id); onClose() }}><Icon name="moon" /> Focus on this</button>
-        <button className="btn btn--primary" onClick={() => toggleDone(t.id)}>
-          <Icon name={t.status === 'done' ? 'refresh' : 'check'} /> {t.status === 'done' ? 'Reopen' : 'Mark done'}
-        </button>
-        <button className="ibtn ibtn--glass tp__del" aria-label="Delete task" onClick={() => { removeTask(t.id); onClose() }}><Icon name="trash" size={18} /></button>
+        {may.move && (
+          <button className="btn btn--primary" onClick={() => toggleDone(t.id)}>
+            <Icon name={t.status === 'done' ? 'refresh' : 'check'} /> {t.status === 'done' ? 'Reopen' : 'Mark done'}
+          </button>
+        )}
+        {may.del && <button className="ibtn ibtn--glass tp__del" aria-label="Delete task" onClick={() => { removeTask(t.id); onClose() }}><Icon name="trash" size={18} /></button>}
       </footer>
     </>
   )

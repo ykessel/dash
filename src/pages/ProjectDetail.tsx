@@ -142,28 +142,72 @@ function Overview({ id }: { id: string }) {
           <span><small>{p.status === 'shipped' ? 'Shipped' : 'Due'}</small>{short(p.due)}</span>
         </div>
       </div>
+      <People id={p.id} />
+    </section>
+  )
+}
+
+/** The project's people and their roles; the lead and anyone with project.admin can change them. */
+function People({ id }: { id: string }) {
+  const { data, person, openDrawer, can, setProjectMember, removeProjectMember, setDefaultRole } = useStore()
+  const p = data.projects.find(x => x.id === id)!
+  const admin = can(p.id, 'project.admin')
+  const roleName = (rid: string | undefined) => data.roles.find(r => r.id === rid)?.name ?? 'Member'
+  const outside = data.people.filter(x => !p.members.includes(x.id))
+  const [adding, setAdding] = useState('')
+  const [addRole, setAddRole] = useState(p.defaultRole)
+  const roleSelect = (value: string, onChange: (v: string) => void, label: string) => (
+    <select className="input" value={value} onChange={e => onChange(e.target.value)} aria-label={label}>
+      {data.roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+    </select>
+  )
+
+  return (
+    <>
       <h3 className="ov__h">People <span className="badge num">{p.members.length}</span></h3>
       <ul className="ov__people">
         {p.members.map(mid => {
           const m = person(mid)
+          const lead = m.id === p.lead
           return (
-            <li key={mid}>
+            <li key={mid} className={admin ? 'pp-row' : undefined}>
               <button className="ov__person" onClick={() => openDrawer({ kind: 'person', id: m.id })}>
                 <Avatar p={m} size={34} presence />
-                <span><b>{m.name}</b><small>{m.id === p.lead ? 'Lead · ' : ''}{PRESENCE_LABEL[m.presence]}</small></span>
+                <span><b>{m.name}</b><small>{lead ? 'Lead · ' : ''}{admin ? PRESENCE_LABEL[m.presence] : roleName(p.roles[mid])}</small></span>
               </button>
+              {admin && roleSelect(p.roles[mid] ?? p.defaultRole, v => setProjectMember(p.id, mid, v), `${m.name}’s role`)}
+              {admin && (lead
+                ? <span className="ibtn" aria-hidden="true" />
+                : <button className="ibtn ibtn--glass" aria-label={`Remove ${m.name}`} onClick={() => removeProjectMember(p.id, mid)}><Icon name="close" size={16} /></button>)}
             </li>
           )
         })}
       </ul>
-    </section>
+      {admin && (
+        <div className="pp-add">
+          {outside.length > 0 && (
+            <>
+              <select className="input" value={adding} onChange={e => setAdding(e.target.value)} aria-label="Person to add">
+                <option value="">Add someone…</option>
+                {outside.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+              </select>
+              {roleSelect(addRole, setAddRole, 'Their role')}
+              <button className="btn btn--glass btn--sm" disabled={!adding} onClick={() => { setProjectMember(p.id, adding, addRole); setAdding('') }}>Add</button>
+            </>
+          )}
+          <small>Everyone else in the workspace:</small>
+          {roleSelect(p.defaultRole, v => setDefaultRole(p.id, v), 'Role for everyone else')}
+        </div>
+      )}
+      {!admin && <p className="pp-add"><small>Everyone else in the workspace: {roleName(p.defaultRole)}</small></p>}
+    </>
   )
 }
 
 /* ---------------- Milestones ---------------- */
 
 function Milestones({ id }: { id: string }) {
-  const { data, updateProject } = useStore()
+  const { data, updateProject, can } = useStore()
   const p = data.projects.find(x => x.id === id)!
   const reached = p.milestones.filter(m => m.done).length
   const nextId = p.milestones.find(m => !m.done)?.id
@@ -179,6 +223,7 @@ function Milestones({ id }: { id: string }) {
                 className="ms__check"
                 aria-label={m.done ? `Mark “${m.title}” not reached` : `Mark “${m.title}” reached`}
                 aria-pressed={m.done}
+                disabled={!can(p.id, 'project.admin')}
                 onClick={() => updateProject(p.id, { milestones: p.milestones.map(x => (x.id === m.id ? { ...x, done: !x.done } : x)) })}
               >
                 <Icon name="check" />
@@ -265,7 +310,7 @@ function ComingUp({ id }: { id: string }) {
 /* ---------------- Tasks grouped by status ---------------- */
 
 function TaskGroups({ id }: { id: string }) {
-  const { data, person, openDrawer, openModal } = useStore()
+  const { data, person, openDrawer, openModal, can } = useStore()
   const [showDone, setShowDone] = useState(false)
   const tasks = data.tasks.filter(t => t.project === id)
   const open = tasks.filter(t => t.status !== 'done').length
@@ -274,7 +319,7 @@ function TaskGroups({ id }: { id: string }) {
     <section className="card glass rise pd-tasks" style={{ ['--i' as string]: 3 }}>
       <div className="card__head">
         <div><h2>Tasks</h2><p>{open} open · {tasks.length - open} done</p></div>
-        <button className="btn btn--primary btn--sm" onClick={() => openModal({ kind: 'task', preset: { project: id } })}><Icon name="plus" /> Add task</button>
+        {can(id, 'tasks.create') && <button className="btn btn--primary btn--sm" onClick={() => openModal({ kind: 'task', preset: { project: id } })}><Icon name="plus" /> Add task</button>}
       </div>
       <div className="ptasks">
         {GROUPS.map(g => {

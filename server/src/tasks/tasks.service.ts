@@ -83,7 +83,8 @@ export class TasksService {
   async create(wsId: string, input: TaskInput, actor: Actor, by: Membership): Promise<TaskView> {
     await this.refs.assertProject(wsId, input.project, 'project')
     const assignee = orNull(input.assignee)
-    await this.access.assert(wsId, input.project, by, 'tasks.create', ...(assignee ? ['tasks.assign' as const] : []))
+    // Taking a task yourself isn't assigning it to someone.
+    await this.access.assert(wsId, input.project, by, 'tasks.create', ...(assignee && assignee !== by.userId ? ['tasks.assign' as const] : []))
     if (assignee) await this.refs.assertMembers(wsId, [assignee], 'assignee')
     const id = await this.ds.transaction(async em => {
       await this.refs.lockLiveProject(em, wsId, input.project)

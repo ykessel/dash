@@ -6,7 +6,7 @@ import { mergeWorkspaces, pickWorkspace, toAuthResult, type AuthResult, type Wor
 import { connectLive } from './api/socket'
 import { DATA_VERSION } from './data/seed'
 import type { CalEvent, Comment, Data, Look, Notice, Permission, Person, Project, ProjectRole, Status, Task } from './data/types'
-import { can as canIn } from './lib/access'
+import { can as canIn, canOnTask } from './lib/access'
 import { todayIso } from './lib/date'
 
 export type { AuthResult } from './api/session'
@@ -114,6 +114,7 @@ interface Store {
   updateProject: (id: string, p: Partial<Project>) => void
   /** What I may do in a project, as the server last said; the server still checks every write. */
   can: (projectId: string, p: Permission) => boolean
+  canTask: (t: Task, action: 'edit' | 'delete') => boolean
   createRole: (r: { name: string; description?: string; permissions: Permission[] }) => Promise<ProjectRole | null>
   updateRole: (id: string, patch: Partial<Pick<ProjectRole, 'name' | 'description' | 'permissions'>>) => Promise<boolean>
   duplicateRole: (id: string) => Promise<ProjectRole | null>
@@ -463,9 +464,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return temp
   }, [putTask, resync, pending]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  /**
+   * Stops a change the server would refuse anyway, before the optimistic update, and says why.
+   * A project I have no permissions for yet (just created, still a temp id) is left to the server.
+   */
+  const allowed = (projectId: string, ...need: Permission[]) => {
+    const mine = dataRef.current.access[projectId]
+    if (!mine || need.every(p => mine.includes(p))) return true
+    notify('You don’t have permission to do that.', 'warn')
+    return false
+  }
+  /** Edit or delete a task: the `_any` permission, or `_own` on a task assigned to me. */
+  const allowedOn = (t: Task, action: 'edit' | 'delete') => {
+    if (canOnTask(dataRef.current.access, dataRef.current.me, t, action)) return true
+    notify('You don’t have permission to do that.', 'warn')
+    return false
+  }
+
   const updateTask = useCallback((id: string, p: Partial<Task>) => {
     const cur = dataRef.current.tasks.find(t => t.id === id)
     if (!cur) return
+    if (!allowedOn(cur, 'edit')) return
+    if (p.assignee !== undefined && p.assignee !== cur.assignee && !allowed(cur.project, 'tasks.assign')) return
+    if (p.status !== undefined && p.status !== cur.status && !allowed(cur.project, 'tasks.transition')) return
+    if (p.project !== undefined && p.project !== cur.project && !allowed(p.project, 'tasks.create')) return
     setData(d => ({ ...d, tasks: d.tasks.map(t => (t.id === id ? { ...t, ...p } : t)) }))
     const body = pick(p, TASK_FIELDS)
     if (!Object.keys(body).length) return
@@ -474,6 +496,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [follow, putTask])
 
   const moveTask = useCallback((id: string, status: Status, beforeId?: string | null) => {
+    const cur = dataRef.current.tasks.find(t => t.id === id)
+    if (cur && !allowed(cur.project, 'tasks.transition')) return
     setData(d => {
       const col = d.tasks.filter(t => t.status === status && t.id !== id).sort((a, b) => a.order - b.order)
       let order: number
@@ -503,6 +527,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const toggleDone = useCallback((id: string) => {
     const before = dataRef.current.tasks.find(t => t.id === id)
     if (!before) return
+    if (!allowed(before.project, 'tasks.transition')) return
     const to: Status = before.status === 'done' ? 'todo' : 'done'
     moveTask(id, to, 'top')
     if (to === 'done') notify(`Done: ${before.title}`, 'ok', () => moveTask(id, before.status, 'top'))
@@ -511,6 +536,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const removeTask = useCallback((id: string) => {
     const removed = dataRef.current.tasks.find(t => t.id === id)
     if (!removed) return
+    if (!allowedOn(removed, 'delete')) return
     setData(d => ({ ...d, tasks: d.tasks.filter(t => t.id !== id) }))
     follow(id, (base, real) => api(`${base}/tasks/${real}`, { method: 'DELETE' }), (_, real) => {
       notify('Task deleted', 'warn', () => follow(real, (base, r) => api<Task>(`${base}/tasks/${r}/restore`, { method: 'POST' }), t => putTask(t)))
@@ -518,12 +544,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [follow, notify, putTask])
 
   const addSubtask = useCallback((taskId: string, title: string) => {
+    const cur = dataRef.current.tasks.find(t => t.id === taskId)
+    if (cur && !allowedOn(cur, 'edit')) return
     setData(d => ({ ...d, tasks: d.tasks.map(t => (t.id === taskId ? { ...t, subtasks: [...t.subtasks, { id: tempId('s'), title, done: false }] } : t)) }))
     follow(taskId, (base, real) => api<Task>(`${base}/tasks/${real}/subtasks`, { method: 'POST', body: { title } }), t => putTask(t))
   }, [follow, putTask])
 
   const toggleSubtask = useCallback((taskId: string, sid: string) => {
-    const sub = dataRef.current.tasks.find(t => t.id === taskId)?.subtasks.find(s => s.id === sid)
+    const cur = dataRef.current.tasks.find(t => t.id === taskId)
+    if (cur && !allowedOn(cur, 'edit')) return
+    const sub = cur?.subtasks.find(s => s.id === sid)
     // A subtask still being added has no id the API knows yet.
     if (!sub || sid.startsWith('tmp-')) return
     setData(d => ({ ...d, tasks: d.tasks.map(t => (t.id === taskId ? { ...t, subtasks: t.subtasks.map(s => (s.id === sid ? { ...s, done: !s.done } : s)) } : t)) }))
@@ -531,6 +561,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [follow, putTask])
 
   const addComment = useCallback((taskId: string, text: string, mentions: string[] = []) => {
+    const cur = dataRef.current.tasks.find(t => t.id === taskId)
+    if (cur && !allowed(cur.project, 'comments.add')) return
     const temp: Comment = { id: tempId('c'), who: dataRef.current.me, text, at: Date.now() }
     setData(d => ({ ...d, tasks: d.tasks.map(t => (t.id === taskId ? { ...t, comments: [...t.comments, temp] } : t)) }))
     follow(taskId, (base, real) => api<Comment>(`${base}/tasks/${real}/comments`, { method: 'POST', body: { text, mentions } }), (c, real) => {
@@ -585,6 +617,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const updateProject = useCallback((id: string, p: Partial<Project>) => {
     const cur = dataRef.current.projects.find(x => x.id === id)
     if (!cur) return
+    if (p.milestones && !allowed(id, 'project.admin')) return
     setData(d => ({ ...d, projects: d.projects.map(x => (x.id === id ? { ...x, ...p } : x)) }))
     const keep = here()
     const base = ws()
@@ -606,6 +639,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [resync]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const can = useCallback((projectId: string, p: Permission) => canIn(data.access, projectId, p), [data.access])
+  const canTask = useCallback((t: Task, action: 'edit' | 'delete') => canOnTask(data.access, data.me, t, action), [data.access, data.me])
 
   const upsertRole = (r: ProjectRole) =>
     setData(d => ({ ...d, roles: d.roles.some(x => x.id === r.id) ? d.roles.map(x => (x.id === r.id ? r : x)) : [...d.roles, r] }))
@@ -779,7 +813,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     workspaces, workspaceId, switchWorkspace, acceptInvite,
     addTask, updateTask, moveTask, toggleDone, removeTask, addSubtask, toggleSubtask, addComment,
     addEvent, removeEvent, addProject, updateProject, invite, markAllRead, setPrefs,
-    can, createRole, updateRole, duplicateRole, removeRole, setProjectMember, removeProjectMember, setDefaultRole,
+    can, canTask, createRole, updateRole, duplicateRole, removeRole, setProjectMember, removeProjectMember, setDefaultRole,
     signedIn: !!user, lastUser, signIn, signUp, signInWith, requestMagicLink, forgotPassword, completeSignIn, signOut,
     drawer, openDrawer, modal, openModal, finder, setFinder, note, notify,
     focus, startFocus, pauseFocus, stopFocus, extendFocus,

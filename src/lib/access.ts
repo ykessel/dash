@@ -32,3 +32,14 @@ export const PERMISSION_GROUPS: { label: string; keys: Permission[] }[] = [
 /** What the server said I may do in a project; the server still checks every write. */
 export const can = (access: Data['access'], projectId: string, p: Permission): boolean =>
   access[projectId]?.includes(p) ?? false
+
+/**
+ * Edit or delete a task: the `_any` permission, or `_own` on a task assigned to me. The server also
+ * counts tasks I created as mine; the client doesn't know the creator, so those wait for the server.
+ * A project I have no permissions for yet (just created, still a temp id) is left to the server too.
+ */
+export const canOnTask = (access: Data['access'], me: string, t: { project: string; assignee: string }, action: 'edit' | 'delete'): boolean => {
+  const mine = access[t.project]
+  if (!mine) return true
+  return mine.includes(`tasks.${action}_any`) || (t.assignee === me && mine.includes(`tasks.${action}_own`))
+}

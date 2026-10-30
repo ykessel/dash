@@ -15,6 +15,8 @@ export interface Person {
   capacity: number
   email: string
   skin: number
+  /** Workspace access, as the API sends it. */
+  access?: 'owner' | 'admin' | 'member'
 }
 
 export type ProjectStatus = 'progress' | 'review' | 'planning' | 'shipped'
