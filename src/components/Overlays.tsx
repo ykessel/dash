@@ -299,7 +299,7 @@ function InviteForm({ onDone }: { onDone: () => void }) {
 function Shortcuts({ onDone }: { onDone: () => void }) {
   const rows: [string, string][] = [
     ['⌘ K', 'Search everything'], ['/', 'Search'], ['N', 'New task'], ['E', 'New event'], ['F', 'Start a focus session'],
-    ['T', 'Toggle theme'], ['G then H/T/C/P/I/M/S', 'Go to a page'], ['Esc', 'Close'],
+    ['T', 'Toggle theme'], ['[', 'Collapse or expand the sidebar'], ['G then H/T/C/P/I/M/S', 'Go to a page'], ['Esc', 'Close'],
   ]
   return (
     <div>

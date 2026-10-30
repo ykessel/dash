@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import type { Theme } from '../data/types'
 import { ago } from '../lib/date'
 import { go, type Route, type RouteName } from '../lib/router'
+import { toggleSide, useSideCompact } from '../lib/sidebar'
 import { useStore } from '../store'
 import { BrandMark, Icon } from './Icon'
 import { Avatar, Popover } from './ui'
@@ -119,6 +120,7 @@ export function Sidebar({ route }: { route: Route }) {
   const [menu, setMenu] = useState(false)
   const open = data.tasks.filter(t => t.assignee === me.id && t.status !== 'done').length
   const pinned = data.projects.filter(p => p.pinned)
+  const compact = useSideCompact()
 
   return (
     <aside className="side glass glass--chrome" aria-label="Workspace">
@@ -130,7 +132,7 @@ export function Sidebar({ route }: { route: Route }) {
         <div className="nav" ref={navRef}>
           <span className="nav__lens" style={lens} />
           {NAV.map(n => (
-            <a key={n.route} href={`#/${n.route}`} className={`nav__item ${route.name === n.route ? 'is-active' : ''}`} aria-current={route.name === n.route ? 'page' : undefined} title={n.label}>
+            <a key={n.route} href={`#/${n.route}`} className={`nav__item ${route.name === n.route ? 'is-active' : ''}`} aria-current={route.name === n.route ? 'page' : undefined} aria-label={n.label} data-tip={n.label}>
               <Icon name={n.icon} />
               <span>{n.label}</span>
               {n.route === 'tasks' && open > 0 && <b className="count">{open}</b>}
@@ -150,7 +152,12 @@ export function Sidebar({ route }: { route: Route }) {
           </ul>
         </>
       )}
-      <button ref={meRef} type="button" className="side__me" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(m => !m)}>
+      <button type="button" className="side__toggle" onClick={toggleSide} aria-pressed={compact}
+        aria-label={compact ? 'Expand sidebar' : 'Collapse sidebar'} data-tip={compact ? 'Expand sidebar  [' : 'Collapse sidebar  ['}>
+        <Icon name={compact ? 'right' : 'left'} />
+        <span>Collapse</span>
+      </button>
+      <button ref={meRef} type="button" className="side__me" data-tip={me.name} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(m => !m)}>
         <Avatar p={me} size={36} />
         <span className="side__me-text"><b>{me.name}</b><small>{me.role}</small></span>
         <Icon name="down" size={18} />

@@ -5,6 +5,7 @@ import { DrawerHost, ModalHost } from './components/Overlays'
 import { Sidebar, TabBar, Toolbar } from './components/Shell'
 import { Wallpaper } from './components/Wallpaper'
 import { AUTH_ROUTES, go, LINK_ROUTES, useRoute, type RouteName } from './lib/router'
+import { toggleSide } from './lib/sidebar'
 import { AuthPage } from './pages/Auth'
 import { Calendar } from './pages/Calendar'
 import { Home } from './pages/Home'
@@ -81,6 +82,7 @@ export function App() {
       if (k === 'n') openModal({ kind: 'task' })
       else if (k === 'e') openModal({ kind: 'event' })
       else if (k === 'f') startFocus()
+      else if (e.key === '[') toggleSide()
       else if (k === 't') setLook({ theme: document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark' })
     }
     window.addEventListener('keydown', on)
