@@ -1010,12 +1010,14 @@ button.ts-cell:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--
 
 /* Timesheet → Calendar */
 .tc { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); gap: 18px; align-items: start; }
+/* The grid gap spaces these; the card margin only pushed the page past the window. */
+.tc > .ts-card { margin-bottom: 0; }
 .tc-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; }
 .tc-head h2 { margin: 0; }
 .tc-nav { margin-left: auto; display: flex; align-items: center; gap: 6px; }
 .tc-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
 .tc-dow { font-size: var(--fs-sm); color: var(--text-2); font-weight: 600; text-align: center; padding-bottom: 2px; }
-.tc-day { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 76px; padding: 8px; border-radius: 12px; background: var(--well); text-align: left; transition: background-color .2s, box-shadow .2s; }
+.tc-day { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: clamp(60px, 9vh - 2px, 84px); padding: 8px; border-radius: 12px; background: var(--well); text-align: left; transition: background-color .2s, box-shadow .2s; }
 .tc-day:hover { background: var(--fill-hover); }
 .tc-day.is-out { opacity: .35; }
 .tc-day.is-future { opacity: .55; }
