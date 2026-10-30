@@ -7,24 +7,24 @@ import { useStore } from '../store'
 import { STATUS_LABEL } from '../components/Overlays'
 import { RolesSettings } from './RolesSettings'
 
-type Section = { id: string; label: string; icon: string; managersOnly?: boolean }
+type Section = { id: string; label: string; icon: string; hue: string; managersOnly?: boolean }
 
 // Your own preferences first; what you shape for the whole workspace after.
 const GROUPS: { label: string; items: Section[] }[] = [
   {
     label: 'Personal',
     items: [
-      { id: 'profile', label: 'Profile', icon: 'user' },
-      { id: 'notifications', label: 'Notifications', icon: 'bell' },
-      { id: 'appearance', label: 'Appearance', icon: 'palette' },
-      { id: 'focus', label: 'Focus timer', icon: 'timer' },
+      { id: 'profile', label: 'Profile', icon: 'user', hue: 'blue' },
+      { id: 'notifications', label: 'Notifications', icon: 'bell', hue: 'pink' },
+      { id: 'appearance', label: 'Appearance', icon: 'palette', hue: 'purple' },
+      { id: 'focus', label: 'Focus timer', icon: 'timer', hue: 'orange' },
     ],
   },
   {
     label: 'Workspace',
     items: [
-      { id: 'roles', label: 'Roles & permissions', icon: 'shield', managersOnly: true },
-      { id: 'data', label: 'Data & export', icon: 'layers' },
+      { id: 'roles', label: 'Roles & permissions', icon: 'shield', hue: 'green', managersOnly: true },
+      { id: 'data', label: 'Data & export', icon: 'layers', hue: 'teal' },
     ],
   },
 ]
@@ -92,7 +92,7 @@ export function Settings() {
               <span className="set-nav__label">{g.label}</span>
               {g.items.map(s => (
                 <button key={s.id} className={`set-nav__item ${active === s.id ? 'is-active' : ''}`} aria-current={active === s.id ? 'true' : undefined} onClick={() => jump(s.id)}>
-                  <Icon name={s.icon} size={18} />
+                  <span className="set-tile" data-hue={s.hue}><Icon name={s.icon} size={16} /></span>
                   <span>{s.label}</span>
                 </button>
               ))}
