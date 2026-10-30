@@ -5,6 +5,7 @@ import type { Accent, Prefs, Theme, Wall } from '../data/types'
 import { downloadCsv } from '../lib/csv'
 import { useStore } from '../store'
 import { STATUS_LABEL } from '../components/Overlays'
+import { RolesSettings } from './RolesSettings'
 
 const SECTIONS = [
   { id: 'profile', label: 'Profile', icon: 'user', hue: 'blue' },
@@ -12,6 +13,7 @@ const SECTIONS = [
   { id: 'appearance', label: 'Appearance', icon: 'palette', hue: 'purple' },
   { id: 'focus', label: 'Focus', icon: 'timer', hue: 'orange' },
   { id: 'data', label: 'Data', icon: 'layers', hue: 'teal' },
+  { id: 'roles', label: 'Roles', icon: 'shield', hue: 'green' },
 ] as const
 
 const WALLS: Wall[] = ['ash', 'sand', 'sage', 'aurora', 'smoke', 'tide', 'bloom', 'ember', 'grove', 'dusk']
@@ -28,6 +30,9 @@ function Tile({ icon, hue }: { icon: string; hue: string }) {
 export function Settings() {
   const { data, me, look, setLook, setPrefs, startFocus, notify, project, person } = useStore()
   const [active, setActive] = useState<string>('profile')
+  // Roles are shaped by the workspace's owner and admins; everyone else just holds them.
+  const manager = me.access === 'owner' || me.access === 'admin'
+  const sections = SECTIONS.filter(s => s.id !== 'roles' || manager)
   const n = data.prefs.notify
   const setN = (k: keyof Prefs['notify']) => setPrefs({ notify: { ...n, [k]: !n[k] } })
 
@@ -65,7 +70,7 @@ export function Settings() {
             <Avatar p={me} size={44} />
             <div><b>{me.name}</b><small>{me.email}</small></div>
           </div>
-          {SECTIONS.map(s => (
+          {sections.map(s => (
             <button key={s.id} className={`set-nav__item ${active === s.id ? 'is-active' : ''}`} onClick={() => jump(s.id)}>
               <Tile icon={s.icon} hue={s.hue} />
               <span>{s.label}</span>
@@ -177,6 +182,8 @@ export function Settings() {
               </li>
             </ul>
           </section>
+
+          {manager && <RolesSettings index={6} />}
         </div>
       </div>
     </>

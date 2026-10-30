@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
+import { ProjectRole } from '../access/project-role.entity'
 import { AuthModule } from '../auth/auth.module'
 import { UsersModule } from '../users/users.module'
 import { Invitation } from './invitation.entity'
@@ -15,7 +16,7 @@ import { WorkspacesController } from './workspaces.controller'
 import { WorkspacesService } from './workspaces.service'
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Workspace, Membership, Invitation]), AuthModule, UsersModule],
+  imports: [TypeOrmModule.forFeature([Workspace, Membership, Invitation, ProjectRole]), AuthModule, UsersModule],
   controllers: [WorkspacesController, MembersController, InvitationsController, AcceptInvitationController],
   providers: [WorkspacesService, MembersService, InvitationsService, WorkspaceMemberGuard, WorkspaceRefs],
   exports: [WorkspacesService, MembersService, WorkspaceMemberGuard, WorkspaceRefs, TypeOrmModule],

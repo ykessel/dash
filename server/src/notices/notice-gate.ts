@@ -5,7 +5,7 @@ import { NotificationsService } from '../notifications/notifications.service'
 import { PrefsService } from '../prefs/prefs.service'
 import type { Notify } from '../prefs/user-prefs.entity'
 
-export type NoticeKind = 'mention' | 'assigned' | 'due' | 'meeting'
+export type NoticeKind = 'mention' | 'assigned' | 'due' | 'meeting' | 'timesheet'
 
 /** The Settings toggle that controls each kind. Assignment has no toggle, so it always arrives. */
 export const NOTIFY_KEY: Record<NoticeKind, keyof Notify | null> = {
@@ -13,6 +13,7 @@ export const NOTIFY_KEY: Record<NoticeKind, keyof Notify | null> = {
   assigned: null,
   due: 'due',
   meeting: 'meetings',
+  timesheet: null,
 }
 
 /** The one door for automatic notices: drops self-notices, non-members and kinds the person switched off. */

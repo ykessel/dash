@@ -13,6 +13,8 @@ export class Task {
   @Column({ type: 'text', default: 'medium' }) priority: Priority
   @Column({ name: 'due_date', type: 'date', nullable: true }) dueDate: string | null
   @Column({ type: 'double precision', default: 1 }) estimate: number
+  /** Set by hand in Log work; null means estimate minus logged. */
+  @Column({ name: 'remaining_minutes', type: 'int', nullable: true }) remainingMinutes: number | null
   @Column({ type: 'double precision', default: 0 }) order: number
   @Column({ name: 'done_at', type: 'date', nullable: true }) doneAt: string | null
   @Column({ type: 'int', default: 1 }) version: number

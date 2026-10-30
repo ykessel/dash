@@ -5,10 +5,12 @@ import { DrawerHost, ModalHost } from './components/Overlays'
 import { Sidebar, TabBar, Toolbar } from './components/Shell'
 import { Wallpaper } from './components/Wallpaper'
 import { AUTH_ROUTES, go, LINK_ROUTES, useRoute, type RouteName } from './lib/router'
+import { toggleSide } from './lib/sidebar'
 import { AuthPage } from './pages/Auth'
 import { Calendar } from './pages/Calendar'
 import { Home } from './pages/Home'
 import { Insights } from './pages/Insights'
+import { Timesheet } from './pages/Timesheet'
 import { ProjectDetail } from './pages/ProjectDetail'
 import { Projects } from './pages/Projects'
 import { Settings } from './pages/Settings'
@@ -80,6 +82,7 @@ export function App() {
       if (k === 'n') openModal({ kind: 'task' })
       else if (k === 'e') openModal({ kind: 'event' })
       else if (k === 'f') startFocus()
+      else if (e.key === '[') toggleSide()
       else if (k === 't') setLook({ theme: document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark' })
     }
     window.addEventListener('keydown', on)
@@ -129,6 +132,7 @@ export function App() {
     case 'calendar': page = <Calendar />; break
     case 'projects': page = route.param ? <ProjectDetail id={route.param} /> : <Projects />; break
     case 'insights': page = <Insights />; break
+    case 'timesheet': page = <Timesheet />; break
     case 'team': page = <Team />; break
     case 'settings': page = <Settings />; break
     default: page = <Home />

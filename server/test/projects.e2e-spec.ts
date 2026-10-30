@@ -67,7 +67,7 @@ describe('projects', () => {
     const p = (await create(lin)).body
     const res = await t.http.put(`${base}/projects/${p.id}/members`).set(lin.auth).send({ userIds: [nia.user.id] }).expect(200)
     expect([...res.body.members].sort()).toEqual([lin.user.id, nia.user.id].sort())
-    expect(events.map(e => e.type)).toEqual(['project.created', 'project.updated'])
+    expect(events.map(e => e.type)).toEqual(['project.created', 'project.updated', 'project.access_changed'])
   })
 
   it('a plain member who is not the lead cannot edit, delete or change members; the lead can', async () => {

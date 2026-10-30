@@ -65,7 +65,11 @@ export class MembersService {
       if (by.role === 'member') throw forbidden()
       if (target.role === 'owner') throw cannotChangeOwner()
     }
-    await this.repo.delete({ workspaceId: wsId, userId })
+    await this.repo.manager.transaction(async em => {
+      await em.delete(Membership, { workspaceId: wsId, userId })
+      // Their worklogs stay for history and reports; hours waiting for approval are withdrawn.
+      await em.query(`DELETE FROM timesheet_periods WHERE workspace_id = $1 AND user_id = $2 AND status = 'submitted'`, [wsId, userId])
+    })
     this.events.publish('member.left', wsId, actor, { userId })
   }
 

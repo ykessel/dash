@@ -90,6 +90,29 @@ After that:
 
 Last restore drill: _not yet_.
 
+## Roles
+
+Every workspace has three built-in project roles: Administrator, Member and Viewer. Their `key`
+column (`administrator`, `member`, `viewer`) is what the code relies on; they can't be edited or
+deleted, only duplicated into custom roles. Each project member holds one role
+(`project_members.role_id`), and `projects.default_role_id` covers everyone in the workspace who
+isn't on the project's list. Workspace owners and admins always have every permission, and a
+project's lead also gets `project.admin`, `time.view_all` and `time.approve`. The
+`ProjectRoles1793405500000` migration seeds the three roles in every existing workspace and puts
+every existing member and every project's default on Member, so nobody loses access on deploy.
+Owners and admins gain the right to delete anyone's comment.
+
+## Time tracking
+
+- Worklogs belong to a task and its assignee. Logging is allowed only while the task is In progress or In review, and never on a future day.
+- `work_date` is the person's local date (their membership `tz`), not UTC. Reports and locks compare plain dates.
+- A person can log at most 24 h per day across the whole workspace. A Postgres advisory lock per user and day serialises concurrent writes, so two tabs can't both slip under the cap.
+- Approval is off by default for every project. A project admin turns it on and picks weekly or monthly. Submitted and approved periods lock their worklogs by date range, and changing the period type later keeps old locks as they were.
+- Turning approval off deletes the project's *submitted* rows and keeps the *approved* ones.
+- When someone leaves the workspace, their submitted periods are withdrawn in the same transaction.
+- Migration `1793405600000-TimeTracking` adds empty `worklogs` and `timesheet_periods` tables plus `tasks.remaining_minutes` and the project approval columns. It does no backfill, and it is safe to run on a live database.
+- The reports range is capped at 731 days and the timesheet range at 62 days. Larger ranges return 400 `invalid` on `range`.
+
 ## Scaling past one machine
 
 1. Create a Redis database (Upstash, same region) and run `fly secrets set REDIS_URL=rediss://…`.

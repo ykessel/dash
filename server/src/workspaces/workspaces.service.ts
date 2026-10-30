@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, type Repository } from 'typeorm'
+import { seedDefaultRoles } from '../access/roles.seed'
 import type { Actor } from '../common/actor.decorator'
 import { isUniqueViolation } from '../common/db-errors'
 import { DomainEvents } from '../common/domain-events'
@@ -47,6 +48,7 @@ export class WorkspacesService {
           const { identifiers } = await em.insert(Workspace, { name: input.name, slug, createdBy: userId })
           const id = identifiers[0].id as string
           await em.insert(Membership, { workspaceId: id, userId, role: 'owner', team: input.team ?? 'Product', title: input.title ?? '' })
+          await seedDefaultRoles(em, id)
           const workspace = await em.findOneByOrFail(Workspace, { id })
           const member = await em.findOneByOrFail(Membership, { workspaceId: id, userId })
           return { workspace: summary(workspace), member: toPerson(member, user) }
