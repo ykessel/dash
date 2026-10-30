@@ -38,11 +38,30 @@ export interface Project {
   due: string
   lead: string
   members: string[]
+  /** Each member's project role id. */
+  roles: Record<string, string>
+  /** The role of everyone in the workspace who isn't on `members`. */
+  defaultRole: string
   pinned: boolean
   starred: boolean
   milestones: Milestone[]
   /** Server edit counter, sent back on PATCH. */
   version?: number
+}
+
+export type Permission =
+  | 'project.browse' | 'project.admin'
+  | 'tasks.create' | 'tasks.edit_own' | 'tasks.edit_any' | 'tasks.delete_own' | 'tasks.delete_any' | 'tasks.assign' | 'tasks.transition'
+  | 'comments.add' | 'comments.delete_any'
+  | 'time.log' | 'time.edit_own' | 'time.edit_any' | 'time.delete_own' | 'time.delete_any' | 'time.view_all' | 'time.approve'
+
+/** A named set of permissions, held per project. `key` marks the three built-in, locked roles. */
+export interface ProjectRole {
+  id: string
+  key: 'administrator' | 'member' | 'viewer' | null
+  name: string
+  description: string
+  permissions: Permission[]
 }
 
 export type Status = 'todo' | 'progress' | 'review' | 'done'
@@ -123,6 +142,9 @@ export interface Data {
   notices: Notice[]
   focus: FocusLog[]
   prefs: Prefs
+  roles: ProjectRole[]
+  /** My own permissions per project id. */
+  access: Record<string, Permission[]>
 }
 
 export type Theme = 'light' | 'dark' | 'system'

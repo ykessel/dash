@@ -5,7 +5,8 @@ import { PendingIds, replaceById } from './api/pending'
 import { mergeWorkspaces, pickWorkspace, toAuthResult, type AuthResult, type WorkspaceRef } from './api/session'
 import { connectLive } from './api/socket'
 import { DATA_VERSION } from './data/seed'
-import type { CalEvent, Comment, Data, Look, Notice, Person, Project, Status, Task } from './data/types'
+import type { CalEvent, Comment, Data, Look, Notice, Permission, Person, Project, ProjectRole, Status, Task } from './data/types'
+import { can as canIn } from './lib/access'
 import { todayIso } from './lib/date'
 
 export type { AuthResult } from './api/session'
@@ -46,6 +47,7 @@ const NOBODY: Person = {
 const EMPTY: Data = {
   version: DATA_VERSION, me: '', people: [], projects: [], tasks: [], events: [], notices: [], focus: [],
   prefs: { notify: { mentions: true, due: true, meetings: true, digest: false, focus: true }, session: 25, pause: 5 },
+  roles: [], access: {},
 }
 
 export type Drawer = { kind: 'task' | 'event' | 'person'; id: string } | null
@@ -110,6 +112,15 @@ interface Store {
   removeEvent: (id: string) => void
   addProject: (p: Pick<Project, 'name' | 'desc' | 'hue' | 'icon' | 'due' | 'status'>) => Promise<Project | null>
   updateProject: (id: string, p: Partial<Project>) => void
+  /** What I may do in a project, as the server last said; the server still checks every write. */
+  can: (projectId: string, p: Permission) => boolean
+  createRole: (r: { name: string; description?: string; permissions: Permission[] }) => Promise<ProjectRole | null>
+  updateRole: (id: string, patch: Partial<Pick<ProjectRole, 'name' | 'description' | 'permissions'>>) => Promise<boolean>
+  duplicateRole: (id: string) => Promise<ProjectRole | null>
+  removeRole: (id: string) => Promise<boolean>
+  setProjectMember: (projectId: string, userId: string, roleId: string) => void
+  removeProjectMember: (projectId: string, userId: string) => void
+  setDefaultRole: (projectId: string, roleId: string) => void
   invite: (name: string, email: string, team: Person['team'], role: string) => Promise<boolean>
   markAllRead: () => void
   setPrefs: (p: Partial<Data['prefs']>) => void
@@ -233,6 +244,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  /** My permissions changed (a role, a project's people, my workspace access): ask again. */
+  const refreshAccess = useCallback((id: string) => {
+    api<{ projects: Data['access'] }>(`/workspaces/${id}/access`)
+      .then(r => { if (wsRef.current === id) setData(d => ({ ...d, access: r.projects })) })
+      .catch(() => { /* the next reconnect re-reads the snapshot */ })
+  }, [])
+
   /** Something went wrong after an optimistic change: say so and take the server's word for it. */
   const resync = useCallback((e: unknown) => {
     notify(message(e), 'warn')
@@ -328,11 +346,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           if (w) setWorkspaces(list => list.map(x => (x.id === w.id ? { id: w.id, name: w.name } : x)))
           return
         }
+        const p = payload as { workspaceId?: string; member?: { id?: string } }
+        if (p.workspaceId === workspaceId && (type === 'project.access_changed' || (type === 'member.updated' && p.member?.id === user.id))) {
+          refreshAccess(workspaceId)
+        }
         setData(d => applyEvent(d, type, payload, workspaceId))
       },
       () => { loadSnapshot(workspaceId).catch(() => { /* try again on next reconnect */ }) },
     )
-  }, [user, workspaceId, loadSnapshot])
+  }, [user, workspaceId, loadSnapshot, refreshAccess])
 
   const switchWorkspace = useCallback((id: string) => {
     if (id !== wsRef.current) openWorkspace(id)
@@ -583,6 +605,82 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     Promise.all(calls).catch(keep(resync))
   }, [resync]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const can = useCallback((projectId: string, p: Permission) => canIn(data.access, projectId, p), [data.access])
+
+  const upsertRole = (r: ProjectRole) =>
+    setData(d => ({ ...d, roles: d.roles.some(x => x.id === r.id) ? d.roles.map(x => (x.id === r.id ? r : x)) : [...d.roles, r] }))
+
+  const createRole = useCallback(async (r: { name: string; description?: string; permissions: Permission[] }) => {
+    try {
+      const role = await api<ProjectRole>(`${ws()}/roles`, { method: 'POST', body: r })
+      upsertRole(role)
+      return role
+    } catch (e) {
+      notify(message(e), 'warn')
+      return null
+    }
+  }, [notify]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const updateRole = useCallback(async (id: string, patch: Partial<Pick<ProjectRole, 'name' | 'description' | 'permissions'>>) => {
+    try {
+      upsertRole(await api<ProjectRole>(`${ws()}/roles/${id}`, { method: 'PATCH', body: patch }))
+      return true
+    } catch (e) {
+      notify(message(e), 'warn')
+      return false
+    }
+  }, [notify]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const duplicateRole = useCallback(async (id: string) => {
+    try {
+      const role = await api<ProjectRole>(`${ws()}/roles/${id}/duplicate`, { method: 'POST' })
+      upsertRole(role)
+      return role
+    } catch (e) {
+      notify(message(e), 'warn')
+      return null
+    }
+  }, [notify]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const removeRole = useCallback(async (id: string) => {
+    try {
+      await api(`${ws()}/roles/${id}`, { method: 'DELETE' })
+      setData(d => ({ ...d, roles: d.roles.filter(r => r.id !== id) }))
+      return true
+    } catch (e) {
+      notify(message(e), 'warn')
+      return false
+    }
+  }, [notify]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Project people: optimistic, then the server's view of the project replaces mine. */
+  const projectCall = useCallback((id: string, optimistic: (p: Project) => Project, call: () => Promise<Project>) => {
+    setData(d => ({ ...d, projects: d.projects.map(x => (x.id === id ? optimistic(x) : x)) }))
+    const keep = here()
+    call()
+      .then(keep(view => setData(d => ({ ...d, projects: d.projects.map(x => (x.id === id ? { ...view, pinned: x.pinned, starred: x.starred } : x)) }))))
+      .catch(keep(resync))
+  }, [resync]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const setProjectMember = useCallback((projectId: string, userId: string, roleId: string) => {
+    projectCall(projectId,
+      p => ({ ...p, members: p.members.includes(userId) ? p.members : [...p.members, userId], roles: { ...p.roles, [userId]: roleId } }),
+      () => api<Project>(`${ws()}/projects/${projectId}/members/${userId}`, { method: 'PUT', body: { roleId } }))
+  }, [projectCall])
+
+  const removeProjectMember = useCallback((projectId: string, userId: string) => {
+    projectCall(projectId,
+      p => { const { [userId]: _gone, ...roles } = p.roles; return { ...p, members: p.members.filter(m => m !== userId), roles } },
+      () => api<Project>(`${ws()}/projects/${projectId}/members/${userId}`, { method: 'DELETE' }))
+  }, [projectCall])
+
+  const setDefaultRole = useCallback((projectId: string, roleId: string) => {
+    const cur = dataRef.current.projects.find(x => x.id === projectId)
+    if (!cur) return
+    projectCall(projectId, p => ({ ...p, defaultRole: roleId }),
+      () => api<Project>(`${ws()}/projects/${projectId}`, { method: 'PATCH', body: { defaultRole: roleId, version: cur.version } }))
+  }, [projectCall])
+
   const invite = useCallback(async (_name: string, email: string, team: Person['team'], role: string) => {
     try {
       await api(`${ws()}/invitations`, { method: 'POST', body: { email, team, title: role } })
@@ -681,6 +779,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     workspaces, workspaceId, switchWorkspace, acceptInvite,
     addTask, updateTask, moveTask, toggleDone, removeTask, addSubtask, toggleSubtask, addComment,
     addEvent, removeEvent, addProject, updateProject, invite, markAllRead, setPrefs,
+    can, createRole, updateRole, duplicateRole, removeRole, setProjectMember, removeProjectMember, setDefaultRole,
     signedIn: !!user, lastUser, signIn, signUp, signInWith, requestMagicLink, forgotPassword, completeSignIn, signOut,
     drawer, openDrawer, modal, openModal, finder, setFinder, note, notify,
     focus, startFocus, pauseFocus, stopFocus, extendFocus,
