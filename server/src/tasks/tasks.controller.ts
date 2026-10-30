@@ -6,6 +6,8 @@ import { dateField } from '../common/dates'
 import { PRIORITIES, STATUSES } from '../common/enums'
 import { parseBody } from '../common/validate'
 import { versionField } from '../common/version'
+import type { Membership } from '../workspaces/membership.entity'
+import { CurrentMembership } from '../workspaces/roles.decorator'
 import { WorkspaceMemberGuard } from '../workspaces/workspace-member.guard'
 import { TasksService } from './tasks.service'
 
@@ -55,8 +57,8 @@ export class TasksController {
   }
 
   @Post()
-  create(@Param('wsId') wsId: string, @Actor() actor: Actor, @Body() body: unknown) {
-    return this.tasks.create(wsId, parseBody(CreateBody, body), actor)
+  create(@Param('wsId') wsId: string, @Actor() actor: Actor, @CurrentMembership() m: Membership, @Body() body: unknown) {
+    return this.tasks.create(wsId, parseBody(CreateBody, body), actor, m)
   }
 
   @Get(':id')
@@ -65,25 +67,25 @@ export class TasksController {
   }
 
   @Patch(':id')
-  update(@Param('wsId') wsId: string, @Param('id') id: string, @Actor() actor: Actor, @Body() body: unknown) {
-    return this.tasks.update(wsId, id, parseBody(PatchBody, body), actor)
+  update(@Param('wsId') wsId: string, @Param('id') id: string, @Actor() actor: Actor, @CurrentMembership() m: Membership, @Body() body: unknown) {
+    return this.tasks.update(wsId, id, parseBody(PatchBody, body), actor, m)
   }
 
   @Delete(':id')
   @HttpCode(204)
-  remove(@Param('wsId') wsId: string, @Param('id') id: string, @Actor() actor: Actor) {
-    return this.tasks.remove(wsId, id, actor)
+  remove(@Param('wsId') wsId: string, @Param('id') id: string, @Actor() actor: Actor, @CurrentMembership() m: Membership) {
+    return this.tasks.remove(wsId, id, actor, m)
   }
 
   @Post(':id/move')
   @HttpCode(200)
-  move(@Param('wsId') wsId: string, @Param('id') id: string, @Actor() actor: Actor, @Body() body: unknown) {
-    return this.tasks.move(wsId, id, parseBody(MoveBody, body), actor)
+  move(@Param('wsId') wsId: string, @Param('id') id: string, @Actor() actor: Actor, @CurrentMembership() m: Membership, @Body() body: unknown) {
+    return this.tasks.move(wsId, id, parseBody(MoveBody, body), actor, m)
   }
 
   @Post(':id/restore')
   @HttpCode(200)
-  restore(@Param('wsId') wsId: string, @Param('id') id: string, @Actor() actor: Actor) {
-    return this.tasks.restore(wsId, id, actor)
+  restore(@Param('wsId') wsId: string, @Param('id') id: string, @Actor() actor: Actor, @CurrentMembership() m: Membership) {
+    return this.tasks.restore(wsId, id, actor, m)
   }
 }

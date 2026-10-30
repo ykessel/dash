@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
+import { AccessModule } from '../access/access.module'
 import { AuthModule } from '../auth/auth.module'
 import { NoticesModule } from '../notices/notices.module'
 import { WorkspacesModule } from '../workspaces/workspaces.module'
@@ -11,7 +12,7 @@ import { TasksController } from './tasks.controller'
 import { TasksService } from './tasks.service'
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Task, Subtask, TaskComment, TaskActivity]), AuthModule, WorkspacesModule, NoticesModule],
+  imports: [TypeOrmModule.forFeature([Task, Subtask, TaskComment, TaskActivity]), AuthModule, WorkspacesModule, NoticesModule, AccessModule],
   controllers: [TasksController, SubtasksController, CommentsController],
   providers: [TasksService, TaskPartsService],
   exports: [TasksService, TypeOrmModule],

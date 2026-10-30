@@ -55,10 +55,10 @@ describe('subtasks and comments', () => {
     expect(view.comments).toEqual([res.body])
   })
 
-  it('only the author deletes a comment', async () => {
-    const c = (await t.http.post(comments()).set(nia.auth).send({ text: 'Mine' }).expect(201)).body
-    expect((await t.http.delete(comments(c.id)).set(lin.auth).expect(403)).body.code).toBe('forbidden')
-    await t.http.delete(comments(c.id)).set(nia.auth).expect(204)
+  it('the author deletes a comment; a member without comments.delete_any cannot', async () => {
+    const c = (await t.http.post(comments()).set(lin.auth).send({ text: 'Mine' }).expect(201)).body
+    expect((await t.http.delete(comments(c.id)).set(nia.auth).expect(403)).body.code).toBe('forbidden')
+    await t.http.delete(comments(c.id)).set(lin.auth).expect(204)
     expect((await t.http.get(`${base}/tasks/${task.id}`).set(lin.auth)).body.comments).toEqual([])
     expect(events.map(e => e.type)).toEqual(['comment.created', 'task.updated'])
   })
