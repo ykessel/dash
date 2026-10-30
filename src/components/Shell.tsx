@@ -23,25 +23,56 @@ export const TITLES: Record<RouteName, string> = {
   signin: 'Sign in', signup: 'Sign up', auth: 'Signing in', invite: 'Invite', signedout: 'Signed out',
 }
 
+/**
+ * The glass pill behind the active nav item. It glides to the new item and, on the way, squeezes
+ * a little and swells back as it lands: `scale` is animated on its own so it composes with the
+ * `transform` the slide transitions.
+ */
 function useLens(dep: unknown, axis: 'y' | 'x') {
   const ref = useRef<HTMLDivElement>(null)
   const [s, setS] = useState<React.CSSProperties>({ opacity: 0 })
+  const last = useRef<number | null>(null)
   useLayoutEffect(() => {
     const root = ref.current
     if (!root) return
     const measure = () => {
       const el = root.querySelector<HTMLElement>('.is-active')
-      if (!el) return setS({ opacity: 0 })
+      if (!el) { last.current = null; return setS({ opacity: 0 }) }
       setS(axis === 'y'
         ? { opacity: 1, transform: `translateY(${el.offsetTop}px)`, height: el.offsetHeight }
         : { opacity: 1, transform: `translateX(${el.offsetLeft}px)`, width: el.offsetWidth })
+      return axis === 'y' ? el.offsetTop : el.offsetLeft
     }
-    measure()
-    const ro = new ResizeObserver(measure)
+    const at = measure()
+    // Squeeze only when the pill actually travels to another item, not on first paint or a resize.
+    if (at !== undefined && last.current !== null && at !== last.current) squeeze(root, axis, Math.abs(at - last.current))
+    last.current = at ?? null
+    const ro = new ResizeObserver(() => { last.current = measure() ?? null })
     ro.observe(root)
     return () => ro.disconnect()
   }, [dep, axis])
   return [ref, s] as const
+}
+
+const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches
+
+/** Shrinks the lens while it moves and lets it swell back, a touch past full size, as it arrives. Longer trips squeeze a bit more. */
+function squeeze(root: HTMLElement, axis: 'y' | 'x', distance: number) {
+  const lens = root.querySelector<HTMLElement>('.nav__lens, .tabbar__lens')
+  if (!lens || reduceMotion() || !lens.animate) return
+  const k = Math.min(1, distance / 160)
+  const thin = axis === 'y' ? `${1 - 0.06 * k - 0.04} ${1 - 0.14 * k - 0.08}` : `${1 - 0.14 * k - 0.08} ${1 - 0.06 * k - 0.04}`
+  // Restart cleanly on quick clicks; leave the slide's own CSS transition alone.
+  lens.getAnimations().forEach(a => { if (a.id === 'lens-squeeze') a.cancel() })
+  lens.animate(
+    [
+      { scale: '1 1', easing: 'cubic-bezier(0.3, 0, 0.5, 1)' },
+      { scale: thin, offset: 0.38, easing: 'cubic-bezier(0.2, 0.8, 0.3, 1)' },
+      { scale: '1.025 1.05', offset: 0.78, easing: 'cubic-bezier(0.4, 0, 0.3, 1)' },
+      { scale: '1 1' },
+    ],
+    { duration: 620, id: 'lens-squeeze' },
+  )
 }
 
 export function AccountMenu({ anchor, onClose, placement = 'below', align = 'right', matchWidth = false }: {
