@@ -5,7 +5,8 @@ import { PendingIds, replaceById } from './api/pending'
 import { mergeWorkspaces, pickWorkspace, toAuthResult, type AuthResult, type WorkspaceRef } from './api/session'
 import { connectLive } from './api/socket'
 import { DATA_VERSION } from './data/seed'
-import type { CalEvent, Comment, Data, Look, Notice, Person, Project, Status, Task } from './data/types'
+import type { CalEvent, Comment, Data, Look, Notice, Permission, Person, Project, ProjectRole, Status, Task, TimePeriod, TimeReport, TimesheetData, Worklog } from './data/types'
+import { can as canIn, canOnTask } from './lib/access'
 import { todayIso } from './lib/date'
 
 export type { AuthResult } from './api/session'
@@ -46,6 +47,7 @@ const NOBODY: Person = {
 const EMPTY: Data = {
   version: DATA_VERSION, me: '', people: [], projects: [], tasks: [], events: [], notices: [], focus: [],
   prefs: { notify: { mentions: true, due: true, meetings: true, digest: false, focus: true }, session: 25, pause: 5 },
+  roles: [], access: {},
 }
 
 export type Drawer = { kind: 'task' | 'event' | 'person'; id: string } | null
@@ -73,6 +75,15 @@ export interface FocusState {
 }
 
 /** Who signed in last on this browser, so Sign in can greet them. */
+export interface TimeReportQuery {
+  from: string
+  to: string
+  groupBy: 'user' | 'project' | 'task'
+  bucket: 'day' | 'week' | 'month' | 'year'
+  scope: 'me' | 'team'
+  approvedOnly: boolean
+}
+
 export interface LastUser { name: string; email: string; skin: number }
 
 type Provider = 'google' | 'github'
@@ -97,7 +108,7 @@ interface Store {
   switchWorkspace: (id: string) => void
   acceptInvite: (token: string) => Promise<AuthResult>
   // tasks
-  addTask: (t: Omit<Task, 'id' | 'order' | 'subtasks' | 'comments'>) => Task
+  addTask: (t: Omit<Task, 'id' | 'order' | 'subtasks' | 'comments' | 'loggedMinutes' | 'remainingMinutes'>) => Task
   updateTask: (id: string, p: Partial<Task>) => void
   moveTask: (id: string, status: Status, beforeId?: string | null) => void
   toggleDone: (id: string) => void
@@ -110,6 +121,28 @@ interface Store {
   removeEvent: (id: string) => void
   addProject: (p: Pick<Project, 'name' | 'desc' | 'hue' | 'icon' | 'due' | 'status'>) => Promise<Project | null>
   updateProject: (id: string, p: Partial<Project>) => void
+  /** What I may do in a project, as the server last said; the server still checks every write. */
+  can: (projectId: string, p: Permission) => boolean
+  canTask: (t: Task, action: 'edit' | 'delete') => boolean
+  createRole: (r: { name: string; description?: string; permissions: Permission[] }) => Promise<ProjectRole | null>
+  updateRole: (id: string, patch: Partial<Pick<ProjectRole, 'name' | 'description' | 'permissions'>>) => Promise<boolean>
+  duplicateRole: (id: string) => Promise<ProjectRole | null>
+  removeRole: (id: string) => Promise<boolean>
+  setProjectMember: (projectId: string, userId: string, roleId: string) => void
+  removeProjectMember: (projectId: string, userId: string) => void
+  setDefaultRole: (projectId: string, roleId: string) => void
+  // time
+  /** Bumps on every worklog or timesheet change I hear about, so open time views refetch. */
+  timeTick: number
+  logWork: (taskId: string, w: { minutes: number; date: string; comment?: string; remaining?: number }) => Promise<boolean>
+  editWorklog: (id: string, patch: { minutes?: number; date?: string; comment?: string }) => Promise<boolean>
+  deleteWorklog: (id: string) => Promise<boolean>
+  worklogsOf: (taskId: string) => Promise<Worklog[]>
+  timesheet: (q: { from: string; to: string; user?: string; project?: string }) => Promise<TimesheetData>
+  timeReport: (q: TimeReportQuery) => Promise<TimeReport>
+  submitPeriod: (projectId: string, start: string) => Promise<boolean>
+  withdrawPeriod: (projectId: string, start: string) => Promise<boolean>
+  reviewPeriod: (projectId: string, userId: string, start: string, action: 'approve' | 'reject' | 'reopen', comment?: string) => Promise<boolean>
   invite: (name: string, email: string, team: Person['team'], role: string) => Promise<boolean>
   markAllRead: () => void
   setPrefs: (p: Partial<Data['prefs']>) => void
@@ -155,7 +188,7 @@ const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Can’t re
 
 /** Fields a task PATCH accepts. */
 const TASK_FIELDS = ['title', 'project', 'assignee', 'status', 'priority', 'due', 'estimate'] as const
-const PROJECT_FIELDS = ['name', 'desc', 'hue', 'icon', 'status', 'start', 'due', 'lead'] as const
+const PROJECT_FIELDS = ['name', 'desc', 'hue', 'icon', 'status', 'start', 'due', 'lead', 'approvalEnabled', 'approvalPeriod'] as const
 const pick = <T extends object>(o: T, keys: readonly string[]) =>
   Object.fromEntries(Object.entries(o).filter(([k, v]) => keys.includes(k) && v !== undefined))
 
@@ -231,6 +264,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setData(snap)
       setLoaded(true)
     }
+  }, [])
+
+  /** My permissions changed (a role, a project's people, my workspace access): ask again. */
+  const refreshAccess = useCallback((id: string) => {
+    api<{ projects: Data['access'] }>(`/workspaces/${id}/access`)
+      .then(r => { if (wsRef.current === id) setData(d => ({ ...d, access: r.projects })) })
+      .catch(() => { /* the next reconnect re-reads the snapshot */ })
   }, [])
 
   /** Something went wrong after an optimistic change: say so and take the server's word for it. */
@@ -328,11 +368,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           if (w) setWorkspaces(list => list.map(x => (x.id === w.id ? { id: w.id, name: w.name } : x)))
           return
         }
+        const p = payload as { workspaceId?: string; member?: { id?: string } }
+        if (p.workspaceId === workspaceId && (type === 'project.access_changed' || type === 'project.created' || (type === 'member.updated' && p.member?.id === user.id))) {
+          refreshAccess(workspaceId)
+        }
+        // project.updated: approval on/off or a new period type changes what's locked.
+        if (type.startsWith('worklog.') || type === 'timesheet.changed' || type === 'project.updated') setTimeTick(n => n + 1)
         setData(d => applyEvent(d, type, payload, workspaceId))
       },
       () => { loadSnapshot(workspaceId).catch(() => { /* try again on next reconnect */ }) },
     )
-  }, [user, workspaceId, loadSnapshot])
+  }, [user, workspaceId, loadSnapshot, refreshAccess])
 
   const switchWorkspace = useCallback((id: string) => {
     if (id !== wsRef.current) openWorkspace(id)
@@ -426,7 +472,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const addTask: Store['addTask'] = useCallback(t => {
-    const temp: Task = { ...t, id: tempId('t'), order: -Date.now(), subtasks: [], comments: [], doneAt: t.status === 'done' ? todayIso() : undefined }
+    const temp: Task = {
+      ...t, id: tempId('t'), order: -Date.now(), subtasks: [], comments: [], loggedMinutes: 0, remainingMinutes: Math.round(t.estimate * 60),
+      doneAt: t.status === 'done' ? todayIso() : undefined,
+    }
     setData(d => ({ ...d, tasks: [temp, ...d.tasks] }))
     const keep = here()
     const create = api<Task>(`${ws()}/tasks`, { method: 'POST', body: { ...pick(t, TASK_FIELDS), assignee: t.assignee || null } })
@@ -441,9 +490,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return temp
   }, [putTask, resync, pending]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  /**
+   * Stops a change the server would refuse anyway, before the optimistic update, and says why.
+   * A project I have no permissions for yet (just created, still a temp id) is left to the server.
+   */
+  const allowed = (projectId: string, ...need: Permission[]) => {
+    const mine = dataRef.current.access[projectId]
+    if (!mine || need.every(p => mine.includes(p))) return true
+    notify('You don’t have permission to do that.', 'warn')
+    return false
+  }
+  /** Edit or delete a task: the `_any` permission, or `_own` on a task assigned to me. */
+  const allowedOn = (t: Task, action: 'edit' | 'delete') => {
+    if (canOnTask(dataRef.current.access, dataRef.current.me, t, action)) return true
+    notify('You don’t have permission to do that.', 'warn')
+    return false
+  }
+
   const updateTask = useCallback((id: string, p: Partial<Task>) => {
     const cur = dataRef.current.tasks.find(t => t.id === id)
     if (!cur) return
+    if (!allowedOn(cur, 'edit')) return
+    if (p.assignee !== undefined && p.assignee !== cur.assignee && !allowed(cur.project, 'tasks.assign')) return
+    if (p.status !== undefined && p.status !== cur.status && !allowed(cur.project, 'tasks.transition')) return
+    if (p.project !== undefined && p.project !== cur.project && !allowed(p.project, 'tasks.create')) return
     setData(d => ({ ...d, tasks: d.tasks.map(t => (t.id === id ? { ...t, ...p } : t)) }))
     const body = pick(p, TASK_FIELDS)
     if (!Object.keys(body).length) return
@@ -452,6 +522,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [follow, putTask])
 
   const moveTask = useCallback((id: string, status: Status, beforeId?: string | null) => {
+    const cur = dataRef.current.tasks.find(t => t.id === id)
+    if (cur && !allowed(cur.project, 'tasks.transition')) return
     setData(d => {
       const col = d.tasks.filter(t => t.status === status && t.id !== id).sort((a, b) => a.order - b.order)
       let order: number
@@ -481,6 +553,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const toggleDone = useCallback((id: string) => {
     const before = dataRef.current.tasks.find(t => t.id === id)
     if (!before) return
+    if (!allowed(before.project, 'tasks.transition')) return
     const to: Status = before.status === 'done' ? 'todo' : 'done'
     moveTask(id, to, 'top')
     if (to === 'done') notify(`Done: ${before.title}`, 'ok', () => moveTask(id, before.status, 'top'))
@@ -489,6 +562,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const removeTask = useCallback((id: string) => {
     const removed = dataRef.current.tasks.find(t => t.id === id)
     if (!removed) return
+    if (!allowedOn(removed, 'delete')) return
     setData(d => ({ ...d, tasks: d.tasks.filter(t => t.id !== id) }))
     follow(id, (base, real) => api(`${base}/tasks/${real}`, { method: 'DELETE' }), (_, real) => {
       notify('Task deleted', 'warn', () => follow(real, (base, r) => api<Task>(`${base}/tasks/${r}/restore`, { method: 'POST' }), t => putTask(t)))
@@ -496,12 +570,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [follow, notify, putTask])
 
   const addSubtask = useCallback((taskId: string, title: string) => {
+    const cur = dataRef.current.tasks.find(t => t.id === taskId)
+    if (cur && !allowedOn(cur, 'edit')) return
     setData(d => ({ ...d, tasks: d.tasks.map(t => (t.id === taskId ? { ...t, subtasks: [...t.subtasks, { id: tempId('s'), title, done: false }] } : t)) }))
     follow(taskId, (base, real) => api<Task>(`${base}/tasks/${real}/subtasks`, { method: 'POST', body: { title } }), t => putTask(t))
   }, [follow, putTask])
 
   const toggleSubtask = useCallback((taskId: string, sid: string) => {
-    const sub = dataRef.current.tasks.find(t => t.id === taskId)?.subtasks.find(s => s.id === sid)
+    const cur = dataRef.current.tasks.find(t => t.id === taskId)
+    if (cur && !allowedOn(cur, 'edit')) return
+    const sub = cur?.subtasks.find(s => s.id === sid)
     // A subtask still being added has no id the API knows yet.
     if (!sub || sid.startsWith('tmp-')) return
     setData(d => ({ ...d, tasks: d.tasks.map(t => (t.id === taskId ? { ...t, subtasks: t.subtasks.map(s => (s.id === sid ? { ...s, done: !s.done } : s)) } : t)) }))
@@ -509,6 +587,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [follow, putTask])
 
   const addComment = useCallback((taskId: string, text: string, mentions: string[] = []) => {
+    const cur = dataRef.current.tasks.find(t => t.id === taskId)
+    if (cur && !allowed(cur.project, 'comments.add')) return
     const temp: Comment = { id: tempId('c'), who: dataRef.current.me, text, at: Date.now() }
     setData(d => ({ ...d, tasks: d.tasks.map(t => (t.id === taskId ? { ...t, comments: [...t.comments, temp] } : t)) }))
     follow(taskId, (base, real) => api<Comment>(`${base}/tasks/${real}/comments`, { method: 'POST', body: { text, mentions } }), (c, real) => {
@@ -553,16 +633,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       const real = await api<Project>(`${ws()}/projects`, { method: 'POST', body: p })
       keep(putProject)(real)
+      refreshAccess(wsRef.current!)
       return real
     } catch (e) {
       notify(message(e), 'warn')
       return null
     }
-  }, [putProject, notify]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [putProject, notify, refreshAccess]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const updateProject = useCallback((id: string, p: Partial<Project>) => {
     const cur = dataRef.current.projects.find(x => x.id === id)
     if (!cur) return
+    if (p.milestones && !allowed(id, 'project.admin')) return
     setData(d => ({ ...d, projects: d.projects.map(x => (x.id === id ? { ...x, ...p } : x)) }))
     const keep = here()
     const base = ws()
@@ -580,8 +662,126 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (Object.keys(fields).length) {
       calls.push(api<Project>(`${base}/projects/${id}`, { method: 'PATCH', body: { ...fields, version: cur.version } }))
     }
-    Promise.all(calls).catch(keep(resync))
+    Promise.all(calls)
+      .then(keep(() => { if (p.lead !== undefined && p.lead !== cur.lead) refreshAccess(wsRef.current!) }))
+      .catch(keep(resync))
   }, [resync]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const can = useCallback((projectId: string, p: Permission) => canIn(data.access, projectId, p), [data.access])
+  const canTask = useCallback((t: Task, action: 'edit' | 'delete') => canOnTask(data.access, data.me, t, action), [data.access, data.me])
+
+  const upsertRole = (r: ProjectRole) =>
+    setData(d => ({ ...d, roles: d.roles.some(x => x.id === r.id) ? d.roles.map(x => (x.id === r.id ? r : x)) : [...d.roles, r] }))
+
+  const createRole = useCallback(async (r: { name: string; description?: string; permissions: Permission[] }) => {
+    try {
+      const role = await api<ProjectRole>(`${ws()}/roles`, { method: 'POST', body: r })
+      upsertRole(role)
+      return role
+    } catch (e) {
+      notify(message(e), 'warn')
+      return null
+    }
+  }, [notify]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const updateRole = useCallback(async (id: string, patch: Partial<Pick<ProjectRole, 'name' | 'description' | 'permissions'>>) => {
+    try {
+      upsertRole(await api<ProjectRole>(`${ws()}/roles/${id}`, { method: 'PATCH', body: patch }))
+      return true
+    } catch (e) {
+      notify(message(e), 'warn')
+      return false
+    }
+  }, [notify]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const duplicateRole = useCallback(async (id: string) => {
+    try {
+      const role = await api<ProjectRole>(`${ws()}/roles/${id}/duplicate`, { method: 'POST' })
+      upsertRole(role)
+      return role
+    } catch (e) {
+      notify(message(e), 'warn')
+      return null
+    }
+  }, [notify]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const removeRole = useCallback(async (id: string) => {
+    try {
+      await api(`${ws()}/roles/${id}`, { method: 'DELETE' })
+      setData(d => ({ ...d, roles: d.roles.filter(r => r.id !== id) }))
+      return true
+    } catch (e) {
+      notify(message(e), 'warn')
+      return false
+    }
+  }, [notify]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Project people: optimistic, then the server's view of the project replaces mine. */
+  const projectCall = useCallback((id: string, optimistic: (p: Project) => Project, call: () => Promise<Project>) => {
+    setData(d => ({ ...d, projects: d.projects.map(x => (x.id === id ? optimistic(x) : x)) }))
+    const keep = here()
+    call()
+      .then(keep(view => {
+        setData(d => ({ ...d, projects: d.projects.map(x => (x.id === id ? { ...view, pinned: x.pinned, starred: x.starred } : x)) }))
+        // The server doesn't echo my own access_changed back to this tab.
+        refreshAccess(wsRef.current!)
+      }))
+      .catch(keep(resync))
+  }, [resync, refreshAccess]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const setProjectMember = useCallback((projectId: string, userId: string, roleId: string) => {
+    projectCall(projectId,
+      p => ({ ...p, members: p.members.includes(userId) ? p.members : [...p.members, userId], roles: { ...p.roles, [userId]: roleId } }),
+      () => api<Project>(`${ws()}/projects/${projectId}/members/${userId}`, { method: 'PUT', body: { roleId } }))
+  }, [projectCall])
+
+  const removeProjectMember = useCallback((projectId: string, userId: string) => {
+    projectCall(projectId,
+      p => { const { [userId]: _gone, ...roles } = p.roles; return { ...p, members: p.members.filter(m => m !== userId), roles } },
+      () => api<Project>(`${ws()}/projects/${projectId}/members/${userId}`, { method: 'DELETE' }))
+  }, [projectCall])
+
+  const setDefaultRole = useCallback((projectId: string, roleId: string) => {
+    const cur = dataRef.current.projects.find(x => x.id === projectId)
+    if (!cur) return
+    projectCall(projectId, p => ({ ...p, defaultRole: roleId }),
+      () => api<Project>(`${ws()}/projects/${projectId}`, { method: 'PATCH', body: { defaultRole: roleId, version: cur.version } }))
+  }, [projectCall])
+
+  /* ---- time ---- */
+  const [timeTick, setTimeTick] = useState(0)
+  const setTotals = (t: { id: string; loggedMinutes: number; remainingMinutes: number }) =>
+    setData(d => ({ ...d, tasks: d.tasks.map(x => (x.id === t.id ? { ...x, loggedMinutes: t.loggedMinutes, remainingMinutes: t.remainingMinutes } : x)) }))
+  /** Runs a time call: on success applies the task totals it returns and refreshes time views; on failure says why. */
+  const timeCall = useCallback(async (call: () => Promise<unknown>) => {
+    try {
+      const r = await call() as { task?: { id: string; loggedMinutes: number; remainingMinutes: number } } | undefined
+      if (r?.task) setTotals(r.task)
+      setTimeTick(n => n + 1)
+      return true
+    } catch (e) {
+      notify(message(e), 'warn')
+      return false
+    }
+  }, [notify]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const logWork = useCallback((taskId: string, w: { minutes: number; date: string; comment?: string; remaining?: number }) =>
+    timeCall(() => api(`${ws()}/tasks/${taskId}/worklogs`, { method: 'POST', body: w })), [timeCall]) // eslint-disable-line react-hooks/exhaustive-deps
+  const editWorklog = useCallback((id: string, patch: { minutes?: number; date?: string; comment?: string }) =>
+    timeCall(() => api(`${ws()}/worklogs/${id}`, { method: 'PATCH', body: patch })), [timeCall]) // eslint-disable-line react-hooks/exhaustive-deps
+  const deleteWorklog = useCallback((id: string) =>
+    timeCall(() => api(`${ws()}/worklogs/${id}`, { method: 'DELETE' })), [timeCall]) // eslint-disable-line react-hooks/exhaustive-deps
+  const worklogsOf = useCallback((taskId: string) => api<Worklog[]>(`${ws()}/tasks/${taskId}/worklogs`), []) // eslint-disable-line react-hooks/exhaustive-deps
+  const timesheet = useCallback((q: { from: string; to: string; user?: string; project?: string }) =>
+    api<TimesheetData>(`${ws()}/timesheet?${new URLSearchParams(Object.entries(q).filter(([, v]) => v) as [string, string][])}`), []) // eslint-disable-line react-hooks/exhaustive-deps
+  const timeReport = useCallback((q: TimeReportQuery) =>
+    api<TimeReport>(`${ws()}/time-reports?${new URLSearchParams({ ...q, approvedOnly: String(q.approvedOnly) })}`), []) // eslint-disable-line react-hooks/exhaustive-deps
+  const submitPeriod = useCallback((projectId: string, start: string) =>
+    timeCall(() => api<TimePeriod>(`${ws()}/projects/${projectId}/timesheets/submit`, { method: 'POST', body: { periodStart: start } })), [timeCall]) // eslint-disable-line react-hooks/exhaustive-deps
+  const withdrawPeriod = useCallback((projectId: string, start: string) =>
+    timeCall(() => api(`${ws()}/projects/${projectId}/timesheets/withdraw`, { method: 'POST', body: { periodStart: start } })), [timeCall]) // eslint-disable-line react-hooks/exhaustive-deps
+  const reviewPeriod = useCallback((projectId: string, userId: string, start: string, action: 'approve' | 'reject' | 'reopen', comment?: string) =>
+    timeCall(() => api(`${ws()}/projects/${projectId}/timesheets/${userId}/${action}`, { method: 'POST', body: { periodStart: start, ...(comment ? { comment } : {}) } })), [timeCall]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const invite = useCallback(async (_name: string, email: string, team: Person['team'], role: string) => {
     try {
@@ -681,6 +881,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     workspaces, workspaceId, switchWorkspace, acceptInvite,
     addTask, updateTask, moveTask, toggleDone, removeTask, addSubtask, toggleSubtask, addComment,
     addEvent, removeEvent, addProject, updateProject, invite, markAllRead, setPrefs,
+    timeTick, logWork, editWorklog, deleteWorklog, worklogsOf, timesheet, timeReport, submitPeriod, withdrawPeriod, reviewPeriod,
+    can, canTask, createRole, updateRole, duplicateRole, removeRole, setProjectMember, removeProjectMember, setDefaultRole,
     signedIn: !!user, lastUser, signIn, signUp, signInWith, requestMagicLink, forgotPassword, completeSignIn, signOut,
     drawer, openDrawer, modal, openModal, finder, setFinder, note, notify,
     focus, startFocus, pauseFocus, stopFocus, extendFocus,

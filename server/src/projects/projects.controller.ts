@@ -36,8 +36,12 @@ const PatchBody = z.object({
   start: dateField.optional(),
   due: dateField.optional(),
   lead: z.string().optional(),
+  defaultRole: z.string().optional(),
+  approvalEnabled: z.boolean().optional(),
+  approvalPeriod: z.enum(['week', 'month'], { error: 'Pick weekly or monthly.' }).optional(),
 })
 const MembersBody = z.object({ userIds: ids })
+const MemberBody = z.object({ roleId: z.string({ error: 'Pick a role.' }) })
 const PrefsBody = z.object({ pinned: z.boolean().optional(), starred: z.boolean().optional() })
 const MilestoneBody = z.object({ title: z.string().trim().min(1).max(120), due: dateField, done: z.boolean().optional() })
 const MilestonePatch = z.object({ title: z.string().trim().min(1).max(120).optional(), due: dateField.optional(), done: z.boolean().optional() })
@@ -76,6 +80,16 @@ export class ProjectsController {
   @Put(':id/members')
   setMembers(@Param('wsId') wsId: string, @Param('id') id: string, @CurrentMembership() m: Membership, @Actor() actor: Actor, @Body() body: unknown) {
     return this.projects.setMembers(wsId, id, parseBody(MembersBody, body).userIds, m, actor)
+  }
+
+  @Put(':id/members/:userId')
+  setMember(@Param('wsId') wsId: string, @Param('id') id: string, @Param('userId') userId: string, @CurrentMembership() m: Membership, @Actor() actor: Actor, @Body() body: unknown) {
+    return this.projects.setMember(wsId, id, userId, parseBody(MemberBody, body).roleId, m, actor)
+  }
+
+  @Delete(':id/members/:userId')
+  removeMember(@Param('wsId') wsId: string, @Param('id') id: string, @Param('userId') userId: string, @CurrentMembership() m: Membership, @Actor() actor: Actor) {
+    return this.projects.removeMember(wsId, id, userId, m, actor)
   }
 
   @Put(':id/prefs')

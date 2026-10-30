@@ -1,7 +1,8 @@
+import { PERMISSION_LABELS } from '../lib/access'
 import { offset } from '../lib/date'
-import type { CalEvent, Data, Hue, Notice, Person, Priority, Project, Status, Task } from './types'
+import type { CalEvent, Data, Hue, Notice, Permission, Person, Priority, Project, Status, Task } from './types'
 
-export const DATA_VERSION = 3
+export const DATA_VERSION = 5
 
 /** The sample team, also drawn on the sign-in showcase. */
 export const people: Person[] = [
@@ -19,7 +20,7 @@ export const people: Person[] = [
   { id: 'malik', name: 'Malik Johnson', role: 'QA Engineer', team: 'Engineering', city: 'Atlanta', tz: 'America/New_York', presence: 'away', capacity: 36, email: 'malik@pane.app', skin: 4 },
 ]
 
-const projects: Project[] = [
+const projects: Omit<Project, 'roles' | 'defaultRole' | 'approvalEnabled' | 'approvalPeriod'>[] = [
   {
     id: 'tide', name: 'Tide mobile app', hue: 'blue', icon: 'phone', status: 'progress',
     desc: 'The 3.0 rebuild of the Tide app: new home, offline sync and a calmer onboarding.',
@@ -154,7 +155,7 @@ const rows: Row[] = [
 
 const SUB_NAMES = ['Draft', 'Review with the team', 'Ship it']
 
-function buildTasks(): Task[] {
+function buildTasks(): Omit<Task, 'loggedMinutes' | 'remainingMinutes'>[] {
   return rows.map((r, i) => {
     const [title, project, assignee, status, priority, due, estimate, subs, comment] = r
     const subtasks = subs
@@ -229,8 +230,9 @@ export function buildSeed(): Data {
     version: DATA_VERSION,
     me: 'lin',
     people,
-    projects,
-    tasks: buildTasks(),
+    // The demo runs as owner: everyone on Member, every permission on every project.
+    projects: projects.map(p => ({ ...p, roles: Object.fromEntries(p.members.map(m => [m, 'member'])), defaultRole: 'member', approvalEnabled: false, approvalPeriod: 'week' as const })),
+    tasks: buildTasks().map(t => ({ ...t, loggedMinutes: 0, remainingMinutes: Math.round(t.estimate * 60) })),
     events: buildEvents(),
     notices: buildNotices(),
     focus: [
@@ -239,8 +241,17 @@ export function buildSeed(): Data {
       { date: offset(-2), minutes: 50 },
     ],
     prefs: { notify: { mentions: true, due: true, meetings: true, digest: false, focus: true }, session: 25, pause: 5 },
+    roles: [
+      { id: 'administrator', key: 'administrator', name: 'Administrator', description: '', permissions: ALL },
+      { id: 'member', key: 'member', name: 'Member', description: '', permissions: ALL.filter(p => MEMBER.includes(p)) },
+      { id: 'viewer', key: 'viewer', name: 'Viewer', description: '', permissions: ['project.browse', 'comments.add'] },
+    ],
+    access: Object.fromEntries(projects.map(p => [p.id, ALL])),
   }
 }
+
+const ALL = Object.keys(PERMISSION_LABELS) as Permission[]
+const MEMBER: Permission[] = ['project.browse', 'comments.add', 'tasks.create', 'tasks.edit_any', 'tasks.delete_any', 'tasks.assign', 'tasks.transition', 'time.log', 'time.edit_own', 'time.delete_own']
 
 /** Deterministic pseudo-random numbers, so charts look the same on every load. */
 export function rng(seed: number) {

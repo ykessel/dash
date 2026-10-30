@@ -1,18 +1,33 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Icon } from '../components/Icon'
 import { Avatar, Seg, Switch } from '../components/ui'
 import type { Accent, Prefs, Theme, Wall } from '../data/types'
 import { downloadCsv } from '../lib/csv'
 import { useStore } from '../store'
 import { STATUS_LABEL } from '../components/Overlays'
+import { RolesSettings } from './RolesSettings'
 
-const SECTIONS = [
-  { id: 'profile', label: 'Profile', icon: 'user', hue: 'blue' },
-  { id: 'notifications', label: 'Notifications', icon: 'bell', hue: 'pink' },
-  { id: 'appearance', label: 'Appearance', icon: 'palette', hue: 'purple' },
-  { id: 'focus', label: 'Focus', icon: 'timer', hue: 'orange' },
-  { id: 'data', label: 'Data', icon: 'layers', hue: 'teal' },
-] as const
+type Section = { id: string; label: string; icon: string; managersOnly?: boolean }
+
+// Your own preferences first; what you shape for the whole workspace after.
+const GROUPS: { label: string; items: Section[] }[] = [
+  {
+    label: 'Personal',
+    items: [
+      { id: 'profile', label: 'Profile', icon: 'user' },
+      { id: 'notifications', label: 'Notifications', icon: 'bell' },
+      { id: 'appearance', label: 'Appearance', icon: 'palette' },
+      { id: 'focus', label: 'Focus timer', icon: 'timer' },
+    ],
+  },
+  {
+    label: 'Workspace',
+    items: [
+      { id: 'roles', label: 'Roles & permissions', icon: 'shield', managersOnly: true },
+      { id: 'data', label: 'Data & export', icon: 'layers' },
+    ],
+  },
+]
 
 const WALLS: Wall[] = ['ash', 'sand', 'sage', 'aurora', 'smoke', 'tide', 'bloom', 'ember', 'grove', 'dusk']
 const ACCENTS: { id: Accent; color: string }[] = [
@@ -21,15 +36,25 @@ const ACCENTS: { id: Accent; color: string }[] = [
 ]
 const cap = (s: string) => s[0].toUpperCase() + s.slice(1)
 
-function Tile({ icon, hue }: { icon: string; hue: string }) {
-  return <span className="set-tile" data-hue={hue}><Icon name={icon} size={16} /></span>
-}
-
 export function Settings() {
-  const { data, me, look, setLook, setPrefs, startFocus, notify, project, person } = useStore()
+  const { data, me, look, setLook, setPrefs, notify, project, person } = useStore()
   const [active, setActive] = useState<string>('profile')
+  // Roles are shaped by the workspace's owner and admins; everyone else just holds them.
+  const manager = me.access === 'owner' || me.access === 'admin'
+  const groups = GROUPS.map(g => ({ ...g, items: g.items.filter(s => !s.managersOnly || manager) }))
   const n = data.prefs.notify
   const setN = (k: keyof Prefs['notify']) => setPrefs({ notify: { ...n, [k]: !n[k] } })
+
+  // Keep the nav on the section being read while the page scrolls.
+  useEffect(() => {
+    const els = groups.flatMap(g => g.items).map(s => document.getElementById(`set-${s.id}`)).filter(Boolean) as HTMLElement[]
+    const io = new IntersectionObserver(entries => {
+      const top = entries.filter(e => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0]
+      if (top) setActive(top.target.id.slice(4))
+    }, { rootMargin: '-90px 0px -60% 0px' })
+    els.forEach(el => io.observe(el))
+    return () => io.disconnect()
+  }, [manager]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const jump = (id: string) => {
     setActive(id)
@@ -44,14 +69,15 @@ export function Settings() {
     notify(`Exported ${data.tasks.length} tasks`, 'ok')
   }
 
-  const notifRows: { k: keyof Prefs['notify']; title: string; sub: string; icon: string; hue: string }[] = [
-    { k: 'mentions', title: 'Mentions', sub: 'When someone @mentions you', icon: 'comment', hue: 'blue' },
-    { k: 'due', title: 'Due dates', sub: 'The morning a task of yours is due', icon: 'flag', hue: 'orange' },
-    { k: 'meetings', title: 'Meetings', sub: 'Five minutes before they start', icon: 'calendar', hue: 'pink' },
-    { k: 'digest', title: 'Daily digest', sub: 'One summary at 9:00 AM', icon: 'inbox', hue: 'teal' },
-    { k: 'focus', title: 'Focus finished', sub: 'When a session ends', icon: 'timer', hue: 'purple' },
+  const notifRows: { k: keyof Prefs['notify']; title: string; sub: string }[] = [
+    { k: 'mentions', title: 'Mentions', sub: 'When someone @mentions you' },
+    { k: 'due', title: 'Due dates', sub: 'The morning a task of yours is due' },
+    { k: 'meetings', title: 'Meetings', sub: 'Five minutes before they start' },
+    { k: 'focus', title: 'Focus finished', sub: 'When a session ends' },
+    { k: 'digest', title: 'Daily digest', sub: 'One summary of your day at 9:00 AM' },
   ]
 
+  let i = 1
   return (
     <>
       <header className="page-head">
@@ -61,39 +87,41 @@ export function Settings() {
 
       <div className="set-layout">
         <nav className="card glass rise set-nav" style={{ ['--i' as string]: 0 }} aria-label="Settings sections">
-          <div className="set-nav__me">
-            <Avatar p={me} size={44} />
-            <div><b>{me.name}</b><small>{me.email}</small></div>
-          </div>
-          {SECTIONS.map(s => (
-            <button key={s.id} className={`set-nav__item ${active === s.id ? 'is-active' : ''}`} onClick={() => jump(s.id)}>
-              <Tile icon={s.icon} hue={s.hue} />
-              <span>{s.label}</span>
-              <Icon name="right" size={16} />
-            </button>
+          {groups.map(g => (
+            <div key={g.label} className="set-nav__group">
+              <span className="set-nav__label">{g.label}</span>
+              {g.items.map(s => (
+                <button key={s.id} className={`set-nav__item ${active === s.id ? 'is-active' : ''}`} aria-current={active === s.id ? 'true' : undefined} onClick={() => jump(s.id)}>
+                  <Icon name={s.icon} size={18} />
+                  <span>{s.label}</span>
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
 
-        <div className="set-grid">
-          <section id="set-profile" className="card glass rise" style={{ ['--i' as string]: 1 }}>
+        <div className="set-col">
+          <section id="set-profile" className="card glass rise" style={{ ['--i' as string]: i++ }}>
             <div className="card__head"><div><h2>Profile</h2><p>How the team sees you</p></div></div>
             <div className="set-profile">
-              <Avatar p={me} size={92} presence />
-              <div><h3>{me.name}</h3><p>{me.role}</p><small>{me.email}</small></div>
+              <Avatar p={me} size={64} presence />
+              <div><h3>{me.name}</h3><small>{me.email}</small></div>
             </div>
             <ul className="set-rows">
-              <li><Tile icon="user" hue="blue" /><b>Name</b><span>{me.name}</span></li>
-              <li><Tile icon="mail" hue="purple" /><b>Email</b><span>{me.email}</span></li>
-              <li><Tile icon="tasks" hue="teal" /><b>Role</b><span>{me.role}</span></li>
+              <li><b>Name</b><span>{me.name}</span></li>
+              <li><b>Email</b><span>{me.email}</span></li>
+              <li>
+                <div><b>Role</b><small>Set by a workspace admin</small></div>
+                <span className="tag tag--plain">{me.role || (me.access ? cap(me.access) : 'Member')}</span>
+              </li>
             </ul>
           </section>
 
-          <section id="set-notifications" className="card glass rise" style={{ ['--i' as string]: 2 }}>
+          <section id="set-notifications" className="card glass rise" style={{ ['--i' as string]: i++ }}>
             <div className="card__head"><div><h2>Notifications</h2><p>What Pane taps you on the shoulder for</p></div></div>
             <ul className="set-rows">
               {notifRows.map(r => (
                 <li key={r.k}>
-                  <Tile icon={r.icon} hue={r.hue} />
                   <div><b>{r.title}</b><small>{r.sub}</small></div>
                   <Switch on={n[r.k]} onToggle={() => setN(r.k)} label={r.title} />
                 </li>
@@ -101,17 +129,16 @@ export function Settings() {
             </ul>
           </section>
 
-          <section id="set-appearance" className="card glass rise set-wide" style={{ ['--i' as string]: 3 }}>
+          <section id="set-appearance" className="card glass rise" style={{ ['--i' as string]: i++ }}>
             <div className="card__head"><div><h2>Appearance</h2><p>The whole app re-tints through its glass</p></div></div>
             <ul className="set-rows">
               <li>
-                <Tile icon="moon" hue="indigo" />
                 <div><b>Theme</b><small>Auto follows your system</small></div>
                 <Seg<Theme> value={look.theme} onChange={t => setLook({ theme: t })} options={[{ value: 'light', label: 'Light', icon: 'sun' }, { value: 'dark', label: 'Dark', icon: 'moon' }, { value: 'system', label: 'Auto', icon: 'auto' }]} label="Theme" />
               </li>
               <li className="set-rows__block">
-                <div className="set-rows__line"><Tile icon="drop" hue="pink" /><div><b>Wallpaper</b><small>{cap(look.wall)}</small></div></div>
-                <div className="walls">
+                <div className="set-rows__line"><div><b>Wallpaper</b></div><small>{cap(look.wall)}</small></div>
+                <div className="walls" role="group" aria-label="Wallpaper">
                   {WALLS.map(w => (
                     <button key={w} className="wall-pick" aria-pressed={look.wall === w} onClick={() => setLook({ wall: w })} aria-label={`${cap(w)} wallpaper`}>
                       <span className="wall-thumb" data-wall={w}>
@@ -129,51 +156,47 @@ export function Settings() {
                   ))}
                 </div>
               </li>
-              <li className="set-rows__block">
-                <div className="set-rows__line"><Tile icon="palette" hue="orange" /><div><b>Accent</b><small>{cap(look.accent)}</small></div></div>
-                <div className="accents">
+              <li>
+                <div><b>Accent</b><small>{cap(look.accent)}</small></div>
+                <div className="accents" role="group" aria-label="Accent">
                   {ACCENTS.map(a => (
-                    <button key={a.id} className="accent-pick" style={{ ['--c' as string]: a.color }} aria-pressed={look.accent === a.id} aria-label={`${cap(a.id)} accent`} onClick={() => setLook({ accent: a.id })}>
-                      {look.accent === a.id && <Icon name="check" size={16} />}
+                    <button key={a.id} className="accent-pick" style={{ ['--c' as string]: a.color }} aria-pressed={look.accent === a.id} aria-label={`${cap(a.id)} accent`} title={cap(a.id)} onClick={() => setLook({ accent: a.id })}>
+                      {look.accent === a.id && <Icon name="check" size={14} />}
                     </button>
                   ))}
                 </div>
               </li>
-              <li>
-                <Tile icon="layers" hue="blue" />
-                <div><b>Glass</b><small>Clear shows more of the wallpaper</small></div>
-                <Seg value={look.glass} onChange={g => setLook({ glass: g })} options={[{ value: 'clear', label: 'Clear' }, { value: 'tinted', label: 'Tinted' }]} label="Glass" />
-              </li>
-              <li>
-                <Tile icon="shield" hue="green" />
-                <div><b>Reduce transparency</b><small>Solid surfaces, no frost</small></div>
-                <Switch on={look.solid} onToggle={() => setLook({ solid: !look.solid })} label="Reduce transparency" />
+              <li className="set-rows__block">
+                <div className="set-rows__line">
+                  <div><b>Glass</b><small>Clear shows more of the wallpaper</small></div>
+                  {look.solid
+                    ? <small className="set-rows__off">Off while transparency is reduced</small>
+                    : <Seg value={look.glass} onChange={g => setLook({ glass: g })} options={[{ value: 'clear', label: 'Clear' }, { value: 'tinted', label: 'Tinted' }]} label="Glass" />}
+                </div>
+                <div className="set-rows__sub well">
+                  <div><b>Reduce transparency</b><small>Solid surfaces, no frost. Easier to read.</small></div>
+                  <Switch on={look.solid} onToggle={() => setLook({ solid: !look.solid })} label="Reduce transparency" />
+                </div>
               </li>
             </ul>
           </section>
 
-          <section id="set-focus" className="card glass rise" style={{ ['--i' as string]: 4 }}>
-            <div className="card__head"><div><h2>Focus</h2><p>The timer the island keeps</p></div></div>
+          <section id="set-focus" className="card glass rise" style={{ ['--i' as string]: i++ }}>
+            <div className="card__head"><div><h2>Focus timer</h2><p>Defaults for sessions you start from the island</p></div></div>
             <div className="steppers">
               <Stepper label="Session" value={data.prefs.session} min={5} max={90} step={5} onChange={v => setPrefs({ session: v })} />
               <Stepper label="Break" value={data.prefs.pause} min={1} max={30} step={1} onChange={v => setPrefs({ pause: v })} />
             </div>
-            <ul className="set-rows">
-              <li>
-                <Tile icon="play" hue="orange" />
-                <div><b>Start a session now</b><small>{data.prefs.session} minutes, then a {data.prefs.pause}-minute break</small></div>
-                <button className="btn btn--primary btn--sm" onClick={() => startFocus()}><Icon name="play" style={{ fill: 'currentColor' }} /> Start</button>
-              </li>
-            </ul>
           </section>
 
-          <section id="set-data" className="card glass rise" style={{ ['--i' as string]: 5 }}>
-            <div className="card__head"><div><h2>Data</h2><p>Your team’s data lives in Pane</p></div></div>
+          {manager && <RolesSettings index={i++} />}
+
+          <section id="set-data" className="card glass rise" style={{ ['--i' as string]: i++ }}>
+            <div className="card__head"><div><h2>Data &amp; export</h2><p>Your team’s data lives in Pane. Take a copy any time.</p></div></div>
             <ul className="set-rows">
-              <li className="is-link" onClick={exportTasks} role="button" tabIndex={0} onKeyDown={e => e.key === 'Enter' && exportTasks()}>
-                <Tile icon="download" hue="green" />
-                <div><b>Export tasks as CSV</b><small>{data.tasks.length} tasks, one row each</small></div>
-                <Icon name="right" size={16} />
+              <li>
+                <div><b>Tasks</b><small>{data.tasks.length} tasks · one row each · CSV</small></div>
+                <button className="btn btn--glass btn--sm" onClick={exportTasks}><Icon name="download" /> Export CSV</button>
               </li>
             </ul>
           </section>

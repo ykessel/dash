@@ -1,4 +1,4 @@
-import type { CalEvent, Comment, Data, Milestone, Notice, Person, Presence, Project, Task } from '../data/types'
+import type { CalEvent, Comment, Data, Milestone, Notice, Person, Presence, Project, ProjectRole, Task } from '../data/types'
 
 type Payload = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -33,6 +33,13 @@ export function applyEvent(d: Data, type: string, p: Payload, wsId: string): Dat
       const proj: Project = { ...p.project, pinned: mine?.pinned ?? false, starred: mine?.starred ?? false }
       return { ...d, projects: upsert(d.projects, proj) }
     }
+    case 'task.time_changed':
+      return { ...d, tasks: d.tasks.map(t => (t.id === p.taskId ? { ...t, loggedMinutes: p.loggedMinutes as number, remainingMinutes: p.remainingMinutes as number } : t)) }
+    case 'role.created':
+    case 'role.updated':
+      return { ...d, roles: upsert(d.roles, p.role as ProjectRole) }
+    case 'role.deleted':
+      return { ...d, roles: d.roles.filter(r => r.id !== p.id) }
     case 'project.deleted':
       return { ...d, projects: d.projects.filter(x => x.id !== p.id) }
     case 'milestone.updated':

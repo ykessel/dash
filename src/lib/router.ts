@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-export type RouteName = 'home' | 'tasks' | 'calendar' | 'projects' | 'insights' | 'team' | 'settings' | 'signin' | 'signup' | 'signedout' | 'auth' | 'invite'
+export type RouteName = 'home' | 'tasks' | 'calendar' | 'projects' | 'insights' | 'timesheet' | 'team' | 'settings' | 'signin' | 'signup' | 'signedout' | 'auth' | 'invite'
 export const AUTH_ROUTES: RouteName[] = ['signin', 'signup', 'signedout', 'auth', 'invite']
 /** Routes that finish a sign-in from a link; they stay put even when a session exists. */
 export const LINK_ROUTES: RouteName[] = ['auth', 'invite']
@@ -12,7 +12,7 @@ export interface Route {
   query: Record<string, string>
 }
 
-const NAMES: RouteName[] = ['home', 'tasks', 'calendar', 'projects', 'insights', 'team', 'settings', 'signin', 'signup', 'signedout', 'auth', 'invite']
+const NAMES: RouteName[] = ['home', 'tasks', 'calendar', 'projects', 'insights', 'timesheet', 'team', 'settings', 'signin', 'signup', 'signedout', 'auth', 'invite']
 
 function read(): Route {
   const [path, search = ''] = location.hash.replace(/^#\/?/, '').split('?')

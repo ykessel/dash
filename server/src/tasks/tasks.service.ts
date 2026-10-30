@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, type EntityManager, In, IsNull, Not, type Repository } from 'typeorm'
+import { AccessService } from '../access/access.service'
+import type { Permission } from '../access/permissions'
 import type { Actor } from '../common/actor.decorator'
 import { CLOCK, type Clock } from '../common/clock'
 import { isoDay } from '../common/dates'
@@ -9,10 +11,14 @@ import { type Priority, type Status, STATUSES } from '../common/enums'
 import { AppError } from '../common/http-exception.filter'
 import { NoticeGate } from '../notices/notice-gate'
 import { assertVersion } from '../common/version'
+import { forbidden } from '../workspaces/errors'
+import type { Membership } from '../workspaces/membership.entity'
 import { WorkspaceRefs } from '../workspaces/refs.service'
 import { UUID } from '../workspaces/workspace-member.guard'
 import { placeOrder } from './order'
 import { type ActivityKind, Subtask, Task, TaskActivity, TaskComment } from './task.entity'
+import { taskHasLockedTime, taskHasLockedTimeError } from '../time/locks'
+import { loggedByTask } from '../time/totals'
 import { type TaskView, toTaskView } from './task-view'
 
 export interface TaskInput {
@@ -34,6 +40,7 @@ export interface TaskFilter {
   q?: string
 }
 
+const projectDeleted = () => new AppError(409, 'project_deleted', 'Its project was deleted, so this task can’t come back.')
 export const taskNotFound = () => new AppError(404, 'task_not_found', 'That task doesn’t exist.')
 
 /** `''` and `null` both mean "nobody" / "no date". */
@@ -50,6 +57,7 @@ export class TasksService {
     private readonly events: DomainEvents,
     @Inject(CLOCK) private readonly clock: Clock,
     private readonly notices: NoticeGate,
+    private readonly access: AccessService,
   ) {}
 
   /** Live tasks, board order: by column (todo → done), then `order`. */
@@ -74,9 +82,11 @@ export class TasksService {
     return (await this.views([await this.find(wsId, id)]))[0]
   }
 
-  async create(wsId: string, input: TaskInput, actor: Actor): Promise<TaskView> {
+  async create(wsId: string, input: TaskInput, actor: Actor, by: Membership): Promise<TaskView> {
     await this.refs.assertProject(wsId, input.project, 'project')
     const assignee = orNull(input.assignee)
+    // Taking a task yourself isn't assigning it to someone.
+    await this.access.assert(wsId, input.project, by, 'tasks.create', ...(assignee && assignee !== by.userId ? ['tasks.assign' as const] : []))
     if (assignee) await this.refs.assertMembers(wsId, [assignee], 'assignee')
     const id = await this.ds.transaction(async em => {
       await this.refs.lockLiveProject(em, wsId, input.project)
@@ -102,11 +112,18 @@ export class TasksService {
     return view
   }
 
-  async update(wsId: string, id: string, patch: TaskPatch, actor: Actor): Promise<TaskView> {
+  async update(wsId: string, id: string, patch: TaskPatch, actor: Actor, by: Membership): Promise<TaskView> {
     const task = await this.find(wsId, id)
     assertVersion(task.version, patch.version)
     const { version, project, assignee, due, status, ...rest } = patch
     if (project !== undefined) await this.refs.assertProject(wsId, project, 'project')
+    const have = await this.assertCan(wsId, task, by, 'edit')
+    const need: Permission[] = [
+      ...(assignee !== undefined && orNull(assignee) !== task.assigneeId ? ['tasks.assign' as const] : []),
+      ...(status !== undefined && status !== task.status ? ['tasks.transition' as const] : []),
+    ]
+    if (!need.every(p => have.has(p))) throw forbidden()
+    if (project !== undefined && project !== task.projectId) await this.access.assert(wsId, project, by, 'tasks.create')
     if (assignee) await this.refs.assertMembers(wsId, [assignee], 'assignee')
     const set: Partial<Task> = {
       ...rest,
@@ -116,12 +133,17 @@ export class TasksService {
     }
     const moved = status !== undefined && status !== task.status
     if (!moved && !Object.values(set).some(v => v !== undefined)) return this.view(wsId, id)
+    const changesProject = project !== undefined && project !== task.projectId
     await this.ds.transaction(async em => {
       if (project !== undefined) await this.refs.lockLiveProject(em, wsId, project)
+      // Hours someone already submitted or got approved stay in the project they were submitted for.
+      // …and can't land in a period of the destination that's already submitted or approved.
+      if (changesProject && (await taskHasLockedTime(em, id) || await taskHasLockedTime(em, id, project))) throw taskHasLockedTimeError()
       if (moved) Object.assign(set, await this.columnChange(wsId, task, status, em))
       // Conditional on the version: of two edits racing from the same version, one gets 409.
       const res = await em.update(Task, { id, version }, { ...set, version: version + 1 })
       if (!res.affected) assertVersion(-1, version)
+      if (changesProject) await em.query(`UPDATE worklogs SET project_id = $2 WHERE task_id = $1`, [id, project])
       if (moved) await this.recordActivity(task, actor.userId, 'status', task.status, status, em)
     })
     const view = await this.publish('task.updated', wsId, id, actor)
@@ -130,23 +152,30 @@ export class TasksService {
   }
 
   /** Soft delete: subtasks and comments stay so restore brings everything back. */
-  async remove(wsId: string, id: string, actor: Actor): Promise<void> {
+  async remove(wsId: string, id: string, actor: Actor, by: Membership): Promise<void> {
     const task = await this.find(wsId, id)
+    await this.assertCan(wsId, task, by, 'delete')
     await this.ds.transaction(async em => {
+      if (await taskHasLockedTime(em, id)) throw taskHasLockedTimeError()
       await em.update(Task, { id }, { deletedAt: this.clock.now(), version: () => 'version + 1' })
       await this.recordActivity(task, actor.userId, 'deleted', undefined, undefined, em)
     })
     this.events.publish('task.deleted', wsId, actor, { id })
   }
 
-  async restore(wsId: string, id: string, actor: Actor): Promise<TaskView> {
+  async restore(wsId: string, id: string, actor: Actor, by: Membership): Promise<TaskView> {
     const task = UUID.test(id) ? await this.tasks.findOneBy({ id, workspaceId: wsId }) : null
     if (!task) throw taskNotFound()
     if (!task.deletedAt) return this.view(wsId, id)
+    const [project] = await this.ds.query(`SELECT deleted_at FROM projects WHERE id = $1`, [task.projectId])
+    if (project?.deleted_at) throw projectDeleted()
+    await this.assertCan(wsId, task, by, 'delete')
     await this.ds.transaction(async em => {
       // A task can't come back into a deleted project; the lock keeps the project live until commit.
       const live = await em.query(`SELECT 1 FROM projects WHERE id = $1 AND deleted_at IS NULL FOR SHARE`, [task.projectId])
-      if (!live.length) throw new AppError(409, 'project_deleted', 'Its project was deleted, so this task can’t come back.')
+      if (!live.length) throw projectDeleted()
+      // Its hours come back too, so they can't reappear inside a period submitted or approved meanwhile.
+      if (await taskHasLockedTime(em, id)) throw taskHasLockedTimeError()
       await em.update(Task, { id, deletedAt: Not(IsNull()) }, { deletedAt: null, version: () => 'version + 1' })
       await this.recordActivity(task, actor.userId, 'restored', undefined, undefined, em)
     })
@@ -157,8 +186,9 @@ export class TasksService {
    * Drag and drop: `beforeId` is the card it lands above, `'top'`, or `null`/missing for the end.
    * Needs no `version` (a drop always wins) but bumps it.
    */
-  async move(wsId: string, id: string, input: { status: Status; beforeId?: string | null }, actor: Actor): Promise<TaskView> {
+  async move(wsId: string, id: string, input: { status: Status; beforeId?: string | null }, actor: Actor, by: Membership): Promise<TaskView> {
     const task = await this.find(wsId, id)
+    await this.access.assert(wsId, task.projectId, by, 'tasks.transition')
     const { status, beforeId } = input
     await this.ds.transaction(async em => {
       // Locking the target column serializes concurrent drops into it.
@@ -187,6 +217,17 @@ export class TasksService {
       if (moved) await this.recordActivity(task, actor.userId, 'status', task.status, status, em)
     })
     return this.publish('task.moved', wsId, id, actor)
+  }
+
+  /**
+   * Edit or delete this task: the `_any` permission, or the `_own` one when I'm its assignee or
+   * its creator. Returns everything the caller holds in the task's project.
+   */
+  async assertCan(wsId: string, task: Task, by: Membership, action: 'edit' | 'delete'): Promise<Set<Permission>> {
+    const have = await this.access.permissions(wsId, task.projectId, by)
+    const own = task.assigneeId === by.userId || task.createdBy === by.userId
+    if (!have.has(`tasks.${action}_any`) && !(own && have.has(`tasks.${action}_own`))) throw forbidden()
+    return have
   }
 
   /** Top of a column: one above the lowest `order`, or 0 for an empty column. */
@@ -246,10 +287,11 @@ export class TasksService {
   private async views(rows: Task[]): Promise<TaskView[]> {
     if (!rows.length) return []
     const ids = rows.map(t => t.id)
-    const [subs, comments] = await Promise.all([
+    const [subs, comments, logged] = await Promise.all([
       this.subtasks.findBy({ taskId: In(ids) }),
       this.comments.findBy({ taskId: In(ids) }),
+      loggedByTask(this.ds, ids),
     ])
-    return rows.map(t => toTaskView(t, subs.filter(s => s.taskId === t.id), comments.filter(c => c.taskId === t.id)))
+    return rows.map(t => toTaskView(t, subs.filter(s => s.taskId === t.id), comments.filter(c => c.taskId === t.id), logged.get(t.id) ?? 0))
   }
 }

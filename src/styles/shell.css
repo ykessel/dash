@@ -168,6 +168,43 @@
 /* Phone tab bar */
 .tabbar { display: none; }
 
+/* Collapse toggle: a nav-like row above the account button; only wide screens can choose. */
+.side { transition: width 0.4s var(--ease), padding 0.4s var(--ease); }
+.main { transition: padding-left 0.4s var(--ease); }
+.side__toggle {
+  margin-top: auto;
+  display: flex; align-items: center; gap: 12px;
+  height: 40px; padding: 0 14px; border-radius: 999px;
+  font-size: var(--fs-sm); font-weight: 550; color: var(--text-2);
+  transition: background-color 0.2s, color 0.2s;
+}
+.side__toggle:hover { background: var(--fill-hover); color: var(--text); }
+.side__toggle .ico { width: 18px; height: 18px; }
+.side__toggle + .side__me { margin-top: 4px; }
+
+/* Icon sidebar: the hand-picked compact mode on wide screens, and always on medium screens. */
+:root[data-side='compact'] { --side-w: 76px; }
+:root[data-side='compact'] .side { padding: 16px 10px 10px; }
+:root[data-side='compact'] .brand { justify-content: center; padding: 0 0 16px; }
+:root[data-side='compact'] :is(.brand__name, .nav__item span, .nav__item .count, .side__label, .pinned, .side__me-text, .side__me > .ico, .side__toggle span) { display: none; }
+:root[data-side='compact'] :is(.nav__item, .side__toggle) { justify-content: center; padding: 0; }
+:root[data-side='compact'] .side__me { justify-content: center; padding: 6px; }
+
+/* Tooltips for the icon-only sidebar. */
+:root[data-side='compact'] .side [data-tip] { position: relative; }
+:root[data-side='compact'] .side [data-tip]::after {
+  content: attr(data-tip);
+  position: absolute; left: calc(100% + 14px); top: 50%;
+  transform: translate(-4px, -50%);
+  padding: 6px 11px; border-radius: 10px;
+  white-space: pre; font-size: 13px; font-weight: 600; color: var(--text);
+  background: var(--glass-thick); box-shadow: 0 8px 24px -8px rgb(0 0 0 / 0.45), inset 0 0 0 1px var(--sep);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  opacity: 0; pointer-events: none; z-index: 60;
+  transition: opacity 0.15s, transform 0.2s var(--ease);
+}
+:root[data-side='compact'] .side [data-tip]:is(:hover, :focus-visible)::after { opacity: 1; transform: translate(0, -50%); transition-delay: 0.12s; }
+
 /* ---------- Medium screens: icon sidebar ---------- */
 @media (max-width: 1180px) {
   :root { --side-w: 76px; }
@@ -175,7 +212,18 @@
   .brand { justify-content: center; padding: 0 0 16px; }
   .brand__name, .nav__item span, .nav__item .count, .side__label, .pinned, .side__me-text, .side__me > .ico { display: none; }
   .nav__item { justify-content: center; padding: 0; }
-  .side__me { justify-content: center; padding: 6px; }
+  .side__me { justify-content: center; padding: 6px; margin-top: auto; }
+  .side__toggle { display: none; }
+  .side [data-tip] { position: relative; }
+  .side [data-tip]::after {
+    content: attr(data-tip);
+    position: absolute; left: calc(100% + 14px); top: 50%; transform: translate(-4px, -50%);
+    padding: 6px 11px; border-radius: 10px; white-space: pre; font-size: 13px; font-weight: 600; color: var(--text);
+    background: var(--glass-thick); box-shadow: 0 8px 24px -8px rgb(0 0 0 / 0.45), inset 0 0 0 1px var(--sep);
+    -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+    opacity: 0; pointer-events: none; z-index: 60; transition: opacity 0.15s, transform 0.2s var(--ease);
+  }
+  .side [data-tip]:is(:hover, :focus-visible)::after { opacity: 1; transform: translate(0, -50%); transition-delay: 0.12s; }
   .page-head { padding-right: 0; padding-top: 74px; }
 }
 @media (max-width: 1180px) and (min-width: 761px) {

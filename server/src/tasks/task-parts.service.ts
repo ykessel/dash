@@ -6,7 +6,9 @@ import { CLOCK, type Clock } from '../common/clock'
 import { DomainEvents } from '../common/domain-events'
 import { AppError } from '../common/http-exception.filter'
 import { NoticeGate } from '../notices/notice-gate'
+import { AccessService } from '../access/access.service'
 import { forbidden } from '../workspaces/errors'
+import type { Membership } from '../workspaces/membership.entity'
 import { UUID } from '../workspaces/workspace-member.guard'
 import { Subtask, Task, TaskComment } from './task.entity'
 import { type CommentView, type TaskView, toCommentView } from './task-view'
@@ -26,10 +28,11 @@ export class TaskPartsService {
     private readonly events: DomainEvents,
     @Inject(CLOCK) private readonly clock: Clock,
     private readonly notices: NoticeGate,
+    private readonly access: AccessService,
   ) {}
 
-  async addSubtask(wsId: string, taskId: string, title: string, actor: Actor): Promise<TaskView> {
-    await this.tasks.find(wsId, taskId)
+  async addSubtask(wsId: string, taskId: string, title: string, actor: Actor, by: Membership): Promise<TaskView> {
+    await this.tasks.assertCan(wsId, await this.tasks.find(wsId, taskId), by, 'edit')
     await this.ds.transaction(async em => {
       const [{ next }] = await em.query(`SELECT coalesce(max(position) + 1, 0)::int AS next FROM subtasks WHERE task_id = $1`, [taskId])
       await em.insert(Subtask, { taskId, title, position: next })
@@ -38,8 +41,8 @@ export class TaskPartsService {
     return this.tasks.publish('task.updated', wsId, taskId, actor)
   }
 
-  async updateSubtask(wsId: string, taskId: string, sid: string, patch: { title?: string; done?: boolean }, actor: Actor): Promise<TaskView> {
-    await this.tasks.find(wsId, taskId)
+  async updateSubtask(wsId: string, taskId: string, sid: string, patch: { title?: string; done?: boolean }, actor: Actor, by: Membership): Promise<TaskView> {
+    await this.tasks.assertCan(wsId, await this.tasks.find(wsId, taskId), by, 'edit')
     await this.findSubtask(taskId, sid)
     if (patch.title === undefined && patch.done === undefined) return this.tasks.view(wsId, taskId)
     await this.ds.transaction(async em => {
@@ -49,8 +52,8 @@ export class TaskPartsService {
     return this.tasks.publish('task.updated', wsId, taskId, actor)
   }
 
-  async removeSubtask(wsId: string, taskId: string, sid: string, actor: Actor): Promise<TaskView> {
-    await this.tasks.find(wsId, taskId)
+  async removeSubtask(wsId: string, taskId: string, sid: string, actor: Actor, by: Membership): Promise<TaskView> {
+    await this.tasks.assertCan(wsId, await this.tasks.find(wsId, taskId), by, 'edit')
     await this.findSubtask(taskId, sid)
     await this.ds.transaction(async em => {
       await em.delete(Subtask, { id: sid })
@@ -60,8 +63,9 @@ export class TaskPartsService {
   }
 
   /** `mentions` are user ids; each one in the workspace (other than me) gets a notice. */
-  async addComment(wsId: string, taskId: string, text: string, actor: Actor, mentions: string[] = []): Promise<CommentView> {
+  async addComment(wsId: string, taskId: string, text: string, actor: Actor, by: Membership, mentions: string[] = []): Promise<CommentView> {
     const task = await this.tasks.find(wsId, taskId)
+    await this.access.assert(wsId, task.projectId, by, 'comments.add')
     const { identifiers } = await this.comments.insert({ taskId, authorId: actor.userId, body: text, createdAt: this.clock.now() })
     const comment = toCommentView(await this.comments.findOneByOrFail({ id: identifiers[0].id as string }))
     this.events.publish('comment.created', wsId, actor, { taskId, comment })
@@ -69,12 +73,12 @@ export class TaskPartsService {
     return comment
   }
 
-  /** Only the author takes a comment back. */
-  async removeComment(wsId: string, taskId: string, cid: string, actor: Actor): Promise<void> {
-    await this.tasks.find(wsId, taskId)
+  /** The author takes a comment back; `comments.delete_any` moderates anyone's. */
+  async removeComment(wsId: string, taskId: string, cid: string, actor: Actor, by: Membership): Promise<void> {
+    const task = await this.tasks.find(wsId, taskId)
     const c = UUID.test(cid) ? await this.comments.findOneBy({ id: cid, taskId }) : null
     if (!c) throw commentNotFound()
-    if (c.authorId !== actor.userId) throw forbidden()
+    if (c.authorId !== actor.userId && !(await this.access.permissions(wsId, task.projectId, by)).has('comments.delete_any')) throw forbidden()
     await this.comments.delete({ id: cid })
     await this.tasks.publish('task.updated', wsId, taskId, actor)
   }

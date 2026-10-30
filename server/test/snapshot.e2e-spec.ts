@@ -41,8 +41,10 @@ describe('snapshot', () => {
     const a = await seed(base, wsA, lin, nia)
     await seed(baseB, wsB, kai, null)
     const snap = (await t.http.get(`${base}/snapshot`).set(lin.auth).expect(200)).body
-    expect(Object.keys(snap).sort()).toEqual(['events', 'focus', 'me', 'notices', 'people', 'prefs', 'projects', 'tasks', 'version'])
-    expect(snap.version).toBe(3)
+    expect(Object.keys(snap).sort()).toEqual(['access', 'events', 'focus', 'me', 'notices', 'people', 'prefs', 'projects', 'roles', 'tasks', 'version'])
+    expect(snap.version).toBe(5)
+    expect(snap.roles.map((r: { key: string }) => r.key)).toEqual(['administrator', 'member', 'viewer'])
+    expect(snap.access[a.project.id]).toContain('project.admin')
     expect(snap.me).toBe(lin.user.id)
     expect(snap.people.map((p: { id: string }) => p.id).sort()).toEqual([lin.user.id, nia.user.id].sort())
     expect(snap.projects).toEqual([expect.objectContaining({ id: a.project.id, pinned: true })])
