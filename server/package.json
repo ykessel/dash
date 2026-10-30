@@ -16,7 +16,8 @@
     "typeorm": "typeorm-ts-node-commonjs -d src/db/data-source.ts",
     "migration:generate": "pnpm typeorm migration:generate",
     "migration:run": "pnpm typeorm migration:run",
-    "migration:revert": "pnpm typeorm migration:revert"
+    "migration:revert": "pnpm typeorm migration:revert",
+    "demo:seed": "node scripts/demo-seed.mjs"
   },
   "jest": {
     "moduleFileExtensions": [
