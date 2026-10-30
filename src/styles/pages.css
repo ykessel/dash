@@ -43,14 +43,15 @@
 .home-grid > :nth-child(6) { grid-column: span 7; }
 .home-grid > :nth-child(7) { grid-column: span 5; }
 
-.rings { flex: 1; display: flex; align-items: center; justify-content: center; gap: 28px; min-height: 230px; }
-.rings__art { position: relative; width: 124px; height: 124px; display: grid; place-items: center; }
+.rings { flex: 1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-evenly; gap: 20px 24px; min-height: 230px; padding: 4px 0 6px; }
+.rings__art { position: relative; flex: none; width: 160px; height: 160px; display: grid; place-items: center; }
 .rings__art .ring { position: absolute; }
-.rings__legend { display: grid; gap: 14px; }
+.rings__legend { display: grid; gap: 16px; min-width: 120px; }
 .rings__legend li { padding-left: 12px; border-left: 3px solid var(--c); }
 .rings__legend small { display: block; font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); }
 .rings__legend b { font-family: var(--font-display); font-size: 22px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .rings__legend i { font-style: normal; font-size: var(--fs-sm); font-weight: 500; color: var(--text-2); }
+.rings__legend em { display: block; margin-top: 1px; font-style: normal; font-size: var(--fs-xs); font-weight: 500; color: var(--text-3); }
 
 .next-ev {
   display: grid;
