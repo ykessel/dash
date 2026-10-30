@@ -5,7 +5,7 @@ import { PendingIds, replaceById } from './api/pending'
 import { mergeWorkspaces, pickWorkspace, toAuthResult, type AuthResult, type WorkspaceRef } from './api/session'
 import { connectLive } from './api/socket'
 import { DATA_VERSION } from './data/seed'
-import type { CalEvent, Comment, Data, Look, Notice, Permission, Person, Project, ProjectRole, Status, Task } from './data/types'
+import type { CalEvent, Comment, Data, Look, Notice, Permission, Person, Project, ProjectRole, Status, Task, TimePeriod, TimeReport, TimesheetData, Worklog } from './data/types'
 import { can as canIn, canOnTask } from './lib/access'
 import { todayIso } from './lib/date'
 
@@ -75,6 +75,15 @@ export interface FocusState {
 }
 
 /** Who signed in last on this browser, so Sign in can greet them. */
+export interface TimeReportQuery {
+  from: string
+  to: string
+  groupBy: 'user' | 'project' | 'task'
+  bucket: 'day' | 'week' | 'month' | 'year'
+  scope: 'me' | 'team'
+  approvedOnly: boolean
+}
+
 export interface LastUser { name: string; email: string; skin: number }
 
 type Provider = 'google' | 'github'
@@ -99,7 +108,7 @@ interface Store {
   switchWorkspace: (id: string) => void
   acceptInvite: (token: string) => Promise<AuthResult>
   // tasks
-  addTask: (t: Omit<Task, 'id' | 'order' | 'subtasks' | 'comments'>) => Task
+  addTask: (t: Omit<Task, 'id' | 'order' | 'subtasks' | 'comments' | 'loggedMinutes' | 'remainingMinutes'>) => Task
   updateTask: (id: string, p: Partial<Task>) => void
   moveTask: (id: string, status: Status, beforeId?: string | null) => void
   toggleDone: (id: string) => void
@@ -122,6 +131,18 @@ interface Store {
   setProjectMember: (projectId: string, userId: string, roleId: string) => void
   removeProjectMember: (projectId: string, userId: string) => void
   setDefaultRole: (projectId: string, roleId: string) => void
+  // time
+  /** Bumps on every worklog or timesheet change I hear about, so open time views refetch. */
+  timeTick: number
+  logWork: (taskId: string, w: { minutes: number; date: string; comment?: string; remaining?: number }) => Promise<boolean>
+  editWorklog: (id: string, patch: { minutes?: number; date?: string; comment?: string }) => Promise<boolean>
+  deleteWorklog: (id: string) => Promise<boolean>
+  worklogsOf: (taskId: string) => Promise<Worklog[]>
+  timesheet: (q: { from: string; to: string; user?: string; project?: string }) => Promise<TimesheetData>
+  timeReport: (q: TimeReportQuery) => Promise<TimeReport>
+  submitPeriod: (projectId: string, start: string) => Promise<boolean>
+  withdrawPeriod: (projectId: string, start: string) => Promise<boolean>
+  reviewPeriod: (projectId: string, userId: string, start: string, action: 'approve' | 'reject' | 'reopen', comment?: string) => Promise<boolean>
   invite: (name: string, email: string, team: Person['team'], role: string) => Promise<boolean>
   markAllRead: () => void
   setPrefs: (p: Partial<Data['prefs']>) => void
@@ -167,7 +188,7 @@ const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Can’t re
 
 /** Fields a task PATCH accepts. */
 const TASK_FIELDS = ['title', 'project', 'assignee', 'status', 'priority', 'due', 'estimate'] as const
-const PROJECT_FIELDS = ['name', 'desc', 'hue', 'icon', 'status', 'start', 'due', 'lead'] as const
+const PROJECT_FIELDS = ['name', 'desc', 'hue', 'icon', 'status', 'start', 'due', 'lead', 'approvalEnabled', 'approvalPeriod'] as const
 const pick = <T extends object>(o: T, keys: readonly string[]) =>
   Object.fromEntries(Object.entries(o).filter(([k, v]) => keys.includes(k) && v !== undefined))
 
@@ -351,6 +372,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (p.workspaceId === workspaceId && (type === 'project.access_changed' || type === 'project.created' || (type === 'member.updated' && p.member?.id === user.id))) {
           refreshAccess(workspaceId)
         }
+        if (type.startsWith('worklog.') || type === 'timesheet.changed') setTimeTick(n => n + 1)
         setData(d => applyEvent(d, type, payload, workspaceId))
       },
       () => { loadSnapshot(workspaceId).catch(() => { /* try again on next reconnect */ }) },
@@ -449,7 +471,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const addTask: Store['addTask'] = useCallback(t => {
-    const temp: Task = { ...t, id: tempId('t'), order: -Date.now(), subtasks: [], comments: [], doneAt: t.status === 'done' ? todayIso() : undefined }
+    const temp: Task = {
+      ...t, id: tempId('t'), order: -Date.now(), subtasks: [], comments: [], loggedMinutes: 0, remainingMinutes: Math.round(t.estimate * 60),
+      doneAt: t.status === 'done' ? todayIso() : undefined,
+    }
     setData(d => ({ ...d, tasks: [temp, ...d.tasks] }))
     const keep = here()
     const create = api<Task>(`${ws()}/tasks`, { method: 'POST', body: { ...pick(t, TASK_FIELDS), assignee: t.assignee || null } })
@@ -722,6 +747,41 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       () => api<Project>(`${ws()}/projects/${projectId}`, { method: 'PATCH', body: { defaultRole: roleId, version: cur.version } }))
   }, [projectCall])
 
+  /* ---- time ---- */
+  const [timeTick, setTimeTick] = useState(0)
+  const setTotals = (t: { id: string; loggedMinutes: number; remainingMinutes: number }) =>
+    setData(d => ({ ...d, tasks: d.tasks.map(x => (x.id === t.id ? { ...x, loggedMinutes: t.loggedMinutes, remainingMinutes: t.remainingMinutes } : x)) }))
+  /** Runs a time call: on success applies the task totals it returns and refreshes time views; on failure says why. */
+  const timeCall = useCallback(async (call: () => Promise<unknown>) => {
+    try {
+      const r = await call() as { task?: { id: string; loggedMinutes: number; remainingMinutes: number } } | undefined
+      if (r?.task) setTotals(r.task)
+      setTimeTick(n => n + 1)
+      return true
+    } catch (e) {
+      notify(message(e), 'warn')
+      return false
+    }
+  }, [notify]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const logWork = useCallback((taskId: string, w: { minutes: number; date: string; comment?: string; remaining?: number }) =>
+    timeCall(() => api(`${ws()}/tasks/${taskId}/worklogs`, { method: 'POST', body: w })), [timeCall]) // eslint-disable-line react-hooks/exhaustive-deps
+  const editWorklog = useCallback((id: string, patch: { minutes?: number; date?: string; comment?: string }) =>
+    timeCall(() => api(`${ws()}/worklogs/${id}`, { method: 'PATCH', body: patch })), [timeCall]) // eslint-disable-line react-hooks/exhaustive-deps
+  const deleteWorklog = useCallback((id: string) =>
+    timeCall(() => api(`${ws()}/worklogs/${id}`, { method: 'DELETE' })), [timeCall]) // eslint-disable-line react-hooks/exhaustive-deps
+  const worklogsOf = useCallback((taskId: string) => api<Worklog[]>(`${ws()}/tasks/${taskId}/worklogs`), []) // eslint-disable-line react-hooks/exhaustive-deps
+  const timesheet = useCallback((q: { from: string; to: string; user?: string; project?: string }) =>
+    api<TimesheetData>(`${ws()}/timesheet?${new URLSearchParams(Object.entries(q).filter(([, v]) => v) as [string, string][])}`), []) // eslint-disable-line react-hooks/exhaustive-deps
+  const timeReport = useCallback((q: TimeReportQuery) =>
+    api<TimeReport>(`${ws()}/time-reports?${new URLSearchParams({ ...q, approvedOnly: String(q.approvedOnly) })}`), []) // eslint-disable-line react-hooks/exhaustive-deps
+  const submitPeriod = useCallback((projectId: string, start: string) =>
+    timeCall(() => api<TimePeriod>(`${ws()}/projects/${projectId}/timesheets/submit`, { method: 'POST', body: { periodStart: start } })), [timeCall]) // eslint-disable-line react-hooks/exhaustive-deps
+  const withdrawPeriod = useCallback((projectId: string, start: string) =>
+    timeCall(() => api(`${ws()}/projects/${projectId}/timesheets/withdraw`, { method: 'POST', body: { periodStart: start } })), [timeCall]) // eslint-disable-line react-hooks/exhaustive-deps
+  const reviewPeriod = useCallback((projectId: string, userId: string, start: string, action: 'approve' | 'reject' | 'reopen', comment?: string) =>
+    timeCall(() => api(`${ws()}/projects/${projectId}/timesheets/${userId}/${action}`, { method: 'POST', body: { periodStart: start, ...(comment ? { comment } : {}) } })), [timeCall]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const invite = useCallback(async (_name: string, email: string, team: Person['team'], role: string) => {
     try {
       await api(`${ws()}/invitations`, { method: 'POST', body: { email, team, title: role } })
@@ -820,6 +880,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     workspaces, workspaceId, switchWorkspace, acceptInvite,
     addTask, updateTask, moveTask, toggleDone, removeTask, addSubtask, toggleSubtask, addComment,
     addEvent, removeEvent, addProject, updateProject, invite, markAllRead, setPrefs,
+    timeTick, logWork, editWorklog, deleteWorklog, worklogsOf, timesheet, timeReport, submitPeriod, withdrawPeriod, reviewPeriod,
     can, canTask, createRole, updateRole, duplicateRole, removeRole, setProjectMember, removeProjectMember, setDefaultRole,
     signedIn: !!user, lastUser, signIn, signUp, signInWith, requestMagicLink, forgotPassword, completeSignIn, signOut,
     drawer, openDrawer, modal, openModal, finder, setFinder, note, notify,

@@ -2,7 +2,7 @@ import { PERMISSION_LABELS } from '../lib/access'
 import { offset } from '../lib/date'
 import type { CalEvent, Data, Hue, Notice, Permission, Person, Priority, Project, Status, Task } from './types'
 
-export const DATA_VERSION = 4
+export const DATA_VERSION = 5
 
 /** The sample team, also drawn on the sign-in showcase. */
 export const people: Person[] = [
@@ -20,7 +20,7 @@ export const people: Person[] = [
   { id: 'malik', name: 'Malik Johnson', role: 'QA Engineer', team: 'Engineering', city: 'Atlanta', tz: 'America/New_York', presence: 'away', capacity: 36, email: 'malik@pane.app', skin: 4 },
 ]
 
-const projects: Omit<Project, 'roles' | 'defaultRole'>[] = [
+const projects: Omit<Project, 'roles' | 'defaultRole' | 'approvalEnabled' | 'approvalPeriod'>[] = [
   {
     id: 'tide', name: 'Tide mobile app', hue: 'blue', icon: 'phone', status: 'progress',
     desc: 'The 3.0 rebuild of the Tide app: new home, offline sync and a calmer onboarding.',
@@ -155,7 +155,7 @@ const rows: Row[] = [
 
 const SUB_NAMES = ['Draft', 'Review with the team', 'Ship it']
 
-function buildTasks(): Task[] {
+function buildTasks(): Omit<Task, 'loggedMinutes' | 'remainingMinutes'>[] {
   return rows.map((r, i) => {
     const [title, project, assignee, status, priority, due, estimate, subs, comment] = r
     const subtasks = subs
@@ -231,8 +231,8 @@ export function buildSeed(): Data {
     me: 'lin',
     people,
     // The demo runs as owner: everyone on Member, every permission on every project.
-    projects: projects.map(p => ({ ...p, roles: Object.fromEntries(p.members.map(m => [m, 'member'])), defaultRole: 'member' })),
-    tasks: buildTasks(),
+    projects: projects.map(p => ({ ...p, roles: Object.fromEntries(p.members.map(m => [m, 'member'])), defaultRole: 'member', approvalEnabled: false, approvalPeriod: 'week' as const })),
+    tasks: buildTasks().map(t => ({ ...t, loggedMinutes: 0, remainingMinutes: Math.round(t.estimate * 60) })),
     events: buildEvents(),
     notices: buildNotices(),
     focus: [

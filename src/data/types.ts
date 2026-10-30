@@ -44,6 +44,9 @@ export interface Project {
   roles: Record<string, string>
   /** The role of everyone in the workspace who isn't on `members`. */
   defaultRole: string
+  /** Hours need approval per period here. */
+  approvalEnabled: boolean
+  approvalPeriod: 'week' | 'month'
   pinned: boolean
   starred: boolean
   milestones: Milestone[]
@@ -64,6 +67,44 @@ export interface ProjectRole {
   name: string
   description: string
   permissions: Permission[]
+}
+
+/** Time someone logged on a task, on their own local date. */
+export interface Worklog {
+  id: string
+  task: string
+  project: string
+  user: string
+  date: string
+  minutes: number
+  comment: string
+  createdAt: number
+  updatedAt: number
+}
+
+/** A submitted, approved or rejected stretch of someone's hours on one project; no row = open. */
+export interface TimePeriod {
+  project: string
+  user: string
+  start: string
+  end: string
+  period: 'week' | 'month'
+  status: 'submitted' | 'approved' | 'rejected'
+  comment: string
+  reviewer: string | null
+  at: number
+}
+
+export interface TimesheetData {
+  worklogs: Worklog[]
+  periods: TimePeriod[]
+  tasks: { id: string; title: string; project: string; status: Status; assignee: string }[]
+}
+
+export interface TimeReport {
+  buckets: string[]
+  rows: { key: string; label: string; minutes: Record<string, number>; total: number }[]
+  total: number
 }
 
 export type Status = 'todo' | 'progress' | 'review' | 'done'
@@ -91,6 +132,10 @@ export interface Task {
   priority: Priority
   due: string
   estimate: number
+  /** Everyone's logged time on this task, in minutes. */
+  loggedMinutes: number
+  /** Remaining estimate in minutes: set by hand, or estimate minus logged. */
+  remainingMinutes: number
   subtasks: Subtask[]
   comments: Comment[]
   doneAt?: string
