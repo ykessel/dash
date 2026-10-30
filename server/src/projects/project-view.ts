@@ -24,6 +24,9 @@ export interface ProjectView {
   roles: Record<string, string>
   /** The role of workspace members who aren't on the list. */
   defaultRole: string
+  /** Hours need approval per period in this project. */
+  approvalEnabled: boolean
+  approvalPeriod: 'week' | 'month'
   pinned: boolean
   starred: boolean
   milestones: MilestoneView[]
@@ -46,6 +49,8 @@ export function toProjectView(p: Project, members: ProjectMember[], milestones: 
     members: members.map(m => m.userId),
     roles: Object.fromEntries(members.map(m => [m.userId, m.roleId])),
     defaultRole: p.defaultRoleId,
+    approvalEnabled: p.approvalEnabled,
+    approvalPeriod: p.approvalPeriod,
     pinned: prefs?.pinned ?? false,
     starred: prefs?.starred ?? false,
     milestones: [...milestones].sort((a, b) => a.position - b.position).map(toMilestoneView),

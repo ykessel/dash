@@ -33,7 +33,12 @@ export interface ProjectInput {
   members?: string[]
 }
 
-export type ProjectPatch = Partial<Omit<ProjectInput, 'members'>> & { version: number; defaultRole?: string }
+export type ProjectPatch = Partial<Omit<ProjectInput, 'members'>> & {
+  version: number
+  defaultRole?: string
+  approvalEnabled?: boolean
+  approvalPeriod?: 'week' | 'month'
+}
 
 const projectNotFound = () => new AppError(404, 'project_not_found', 'That project doesn’t exist.')
 const milestoneNotFound = () => new AppError(404, 'milestone_not_found', 'That milestone doesn’t exist.')
@@ -121,6 +126,10 @@ export class ProjectsService {
       // Conditional on the version: of two edits racing from the same version, one gets 409.
       const res = await em.update(Project, { id, version }, { ...set, version: version + 1 })
       if (!res.affected) assertVersion(-1, version)
+      // Turning approval off sends pending submissions back to open; approved ones stay as history.
+      if (rest.approvalEnabled === false && p.approvalEnabled) {
+        await em.query(`DELETE FROM timesheet_periods WHERE project_id = $1 AND status = 'submitted'`, [id])
+      }
       // A new lead keeps the role they already hold here; a newcomer gets the project's default.
       if (lead !== undefined) {
         await em.createQueryBuilder().insert().into(ProjectMember)

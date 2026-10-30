@@ -37,6 +37,8 @@ const PatchBody = z.object({
   due: dateField.optional(),
   lead: z.string().optional(),
   defaultRole: z.string().optional(),
+  approvalEnabled: z.boolean().optional(),
+  approvalPeriod: z.enum(['week', 'month'], { error: 'Pick weekly or monthly.' }).optional(),
 })
 const MembersBody = z.object({ userIds: ids })
 const MemberBody = z.object({ roleId: z.string({ error: 'Pick a role.' }) })
