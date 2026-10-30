@@ -146,7 +146,8 @@
 
 /* Main */
 .main {
-  padding: var(--edge) var(--gutter) 60px calc(var(--edge) + var(--side-w) + var(--gutter));
+  /* Bottom matches the sidebar inset: a page that fits the window shouldn't scroll. */
+  padding: var(--edge) var(--gutter) var(--edge) calc(var(--edge) + var(--side-w) + var(--gutter));
   max-width: 2000px;
 }
 .view { animation: fade 0.35s var(--ease) backwards; }
