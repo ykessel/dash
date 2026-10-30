@@ -6,6 +6,8 @@ import { NoticesModule } from '../notices/notices.module'
 import { WorkspacesModule } from '../workspaces/workspaces.module'
 import { TimesheetPeriod } from './timesheet-period.entity'
 import { Worklog } from './worklog.entity'
+import { ReportsController } from './reports.controller'
+import { ReportsService } from './reports.service'
 import { TimesheetsController } from './timesheets.controller'
 import { TimesheetsService } from './timesheets.service'
 import { WorklogsController } from './worklogs.controller'
@@ -13,8 +15,8 @@ import { WorklogsService } from './worklogs.service'
 
 @Module({
   imports: [TypeOrmModule.forFeature([Worklog, TimesheetPeriod]), AuthModule, WorkspacesModule, AccessModule, NoticesModule],
-  controllers: [WorklogsController, TimesheetsController],
-  providers: [WorklogsService, TimesheetsService],
+  controllers: [WorklogsController, TimesheetsController, ReportsController],
+  providers: [WorklogsService, TimesheetsService, ReportsService],
   exports: [WorklogsService],
 })
 export class TimeModule {}
