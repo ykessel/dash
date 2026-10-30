@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, In, IsNull, Not, type Repository } from 'typeorm'
 import { AccessService } from '../access/access.service'
-import { covers, type Permission, parsePermissions } from '../access/permissions'
+import { covers, LEAD_PERMISSIONS, type Permission, parsePermissions } from '../access/permissions'
 import { ProjectRole } from '../access/project-role.entity'
 import { RolesService } from '../access/roles.service'
 import { memberRoleId } from '../access/roles.seed'
@@ -99,7 +99,11 @@ export class ProjectsService {
     const have = await this.access.assert(wsId, id, by, 'project.admin')
     assertVersion(p.version, patch.version)
     const { version, desc, start, due, lead, defaultRole, ...rest } = patch
-    if (lead !== undefined) await this.refs.assertMembers(wsId, [lead], 'lead')
+    if (lead !== undefined && lead !== p.leadId) {
+      await this.refs.assertMembers(wsId, [lead], 'lead')
+      // Moving the lead hands out (and takes away) the lead's powers: only someone who holds them all may.
+      if (!covers(have, LEAD_PERMISSIONS)) throw forbidden()
+    }
     if (defaultRole !== undefined) {
       const next = await this.roles.find(wsId, defaultRole, 'defaultRole')
       this.assertCanGrant(have, next, await this.role(p.defaultRoleId))
@@ -120,7 +124,7 @@ export class ProjectsService {
       // A new lead keeps the role they already hold here; a newcomer gets the project's default.
       if (lead !== undefined) {
         await em.createQueryBuilder().insert().into(ProjectMember)
-          .values({ projectId: id, userId: lead, roleId: p.defaultRoleId }).orIgnore().execute()
+          .values({ projectId: id, userId: lead, roleId: defaultRole ?? p.defaultRoleId }).orIgnore().execute()
       }
     })
     const view = await this.publishUpdated(wsId, id, actor)

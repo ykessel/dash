@@ -348,7 +348,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           return
         }
         const p = payload as { workspaceId?: string; member?: { id?: string } }
-        if (p.workspaceId === workspaceId && (type === 'project.access_changed' || (type === 'member.updated' && p.member?.id === user.id))) {
+        if (p.workspaceId === workspaceId && (type === 'project.access_changed' || type === 'project.created' || (type === 'member.updated' && p.member?.id === user.id))) {
           refreshAccess(workspaceId)
         }
         setData(d => applyEvent(d, type, payload, workspaceId))
@@ -607,12 +607,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       const real = await api<Project>(`${ws()}/projects`, { method: 'POST', body: p })
       keep(putProject)(real)
+      refreshAccess(wsRef.current!)
       return real
     } catch (e) {
       notify(message(e), 'warn')
       return null
     }
-  }, [putProject, notify]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [putProject, notify, refreshAccess]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const updateProject = useCallback((id: string, p: Partial<Project>) => {
     const cur = dataRef.current.projects.find(x => x.id === id)
@@ -635,7 +636,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (Object.keys(fields).length) {
       calls.push(api<Project>(`${base}/projects/${id}`, { method: 'PATCH', body: { ...fields, version: cur.version } }))
     }
-    Promise.all(calls).catch(keep(resync))
+    Promise.all(calls)
+      .then(keep(() => { if (p.lead !== undefined && p.lead !== cur.lead) refreshAccess(wsRef.current!) }))
+      .catch(keep(resync))
   }, [resync]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const can = useCallback((projectId: string, p: Permission) => canIn(data.access, projectId, p), [data.access])
@@ -692,9 +695,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setData(d => ({ ...d, projects: d.projects.map(x => (x.id === id ? optimistic(x) : x)) }))
     const keep = here()
     call()
-      .then(keep(view => setData(d => ({ ...d, projects: d.projects.map(x => (x.id === id ? { ...view, pinned: x.pinned, starred: x.starred } : x)) }))))
+      .then(keep(view => {
+        setData(d => ({ ...d, projects: d.projects.map(x => (x.id === id ? { ...view, pinned: x.pinned, starred: x.starred } : x)) }))
+        // The server doesn't echo my own access_changed back to this tab.
+        refreshAccess(wsRef.current!)
+      }))
       .catch(keep(resync))
-  }, [resync]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [resync, refreshAccess]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const setProjectMember = useCallback((projectId: string, userId: string, roleId: string) => {
     projectCall(projectId,

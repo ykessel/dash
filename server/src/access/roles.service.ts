@@ -2,11 +2,12 @@ import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, type Repository } from 'typeorm'
 import type { Actor } from '../common/actor.decorator'
-import { isUniqueViolation } from '../common/db-errors'
+import { isForeignKeyViolation, isUniqueViolation } from '../common/db-errors'
 import { DomainEvents } from '../common/domain-events'
 import { AppError, type ErrorField } from '../common/http-exception.filter'
 import { UUID } from '../workspaces/workspace-member.guard'
 import { DEFAULT_ROLES, type Permission } from './permissions'
+import { memberRoleId } from './roles.seed'
 import { ProjectRole } from './project-role.entity'
 import { type RoleView, toRoleView } from './role-view'
 
@@ -85,17 +86,32 @@ export class RolesService {
     throw nameTaken()
   }
 
-  /** Only unused custom roles: a project member or a project's default still pointing at it is 409. */
+  /**
+   * Only unused custom roles: a live project's default, or a current workspace member holding it on a
+   * live project, is 409. Places nobody can see (deleted projects, people who left) fall back to Member.
+   */
   async remove(wsId: string, id: string, actor: Actor): Promise<void> {
     const r = await this.editable(wsId, id)
     await this.ds.transaction(async em => {
       await em.query(`SELECT 1 FROM project_roles WHERE id = $1 FOR UPDATE`, [r.id])
       const [{ n }] = await em.query(
-        `SELECT (SELECT count(*) FROM project_members WHERE role_id = $1)
+        `SELECT (SELECT count(*) FROM project_members pm
+                   JOIN projects p ON p.id = pm.project_id AND p.deleted_at IS NULL
+                   JOIN memberships m ON m.workspace_id = p.workspace_id AND m.user_id = pm.user_id
+                  WHERE pm.role_id = $1)
               + (SELECT count(*) FROM projects WHERE default_role_id = $1 AND deleted_at IS NULL) AS n`, [r.id])
       const count = Number(n)
       if (count) throw new AppError(409, 'role_in_use', `This role is used in ${count} place${count === 1 ? '' : 's'}. Reassign them first.`)
-      await em.delete(ProjectRole, { id: r.id })
+      const member = await memberRoleId(em, wsId)
+      await em.query(`UPDATE project_members SET role_id = $2 WHERE role_id = $1`, [r.id, member])
+      await em.query(`UPDATE projects SET default_role_id = $2 WHERE default_role_id = $1`, [r.id, member])
+      try {
+        await em.delete(ProjectRole, { id: r.id })
+      } catch (e) {
+        // Someone assigned it between the count and the delete.
+        if (isForeignKeyViolation(e)) throw new AppError(409, 'role_in_use', 'This role was just assigned. Reassign it first.')
+        throw e
+      }
     })
     this.events.publish('role.deleted', wsId, actor, { id: r.id })
     this.events.publish('project.access_changed', wsId, actor, { projectId: null })

@@ -8,13 +8,14 @@ describe('roles', () => {
   let events: DomainEvent[]
   let lin: Signed
   let nia: Signed
+  let kai: Signed
   let wsA: string
   let wsB: string
   let base: string
   beforeAll(async () => { t = await createTestApp(); events = captureEvents(t) })
   beforeEach(async () => {
     await resetAll(t)
-    ;({ lin, nia, wsA, wsB, base } = await twoTeams(t))
+    ;({ lin, nia, kai, wsA, wsB, base } = await twoTeams(t))
     events.length = 0
   })
   afterAll(() => t.app.close())
@@ -96,6 +97,20 @@ describe('roles', () => {
     expect(res.body).toMatchObject({ code: 'role_in_use', message: expect.stringContaining('1 place') })
     expect((await t.http.delete(`${base}/roles/${asDefault.id}`).set(lin.auth).expect(409)).body.code).toBe('role_in_use')
     await t.http.delete(`${base}/roles/${unused.id}`).set(lin.auth).expect(204)
+  })
+
+  it('places in deleted projects or held by people who left do not block a delete', async () => {
+    const gone = await project(lin)
+    const live = await project(lin)
+    const role = (await create(lin, { name: 'Old', permissions: [] })).body
+    const ids = await roleIds(wsA)
+    await t.db.query(`UPDATE projects SET default_role_id = $1 WHERE id = $2`, [role.id, gone.id])
+    await t.db.query(`UPDATE project_members SET role_id = $1 WHERE project_id = $2`, [role.id, gone.id])
+    await t.db.query(`UPDATE projects SET deleted_at = now() WHERE id = $1`, [gone.id])
+    await t.db.query(`INSERT INTO project_members (project_id, user_id, role_id) VALUES ($1, $2, $3)`, [live.id, kai.user.id, role.id])
+    await t.http.delete(`${base}/roles/${role.id}`).set(lin.auth).expect(204)
+    const [p] = await t.db.query(`SELECT default_role_id FROM projects WHERE id = $1`, [gone.id])
+    expect(p.default_role_id).toBe(ids.member)
   })
 
   it("another workspace's role is 404 role_not_found", async () => {

@@ -57,6 +57,23 @@ describe('project access', () => {
   })
 
   describe('membership with roles', () => {
+    it("project.admin from a role isn't enough to take or move the lead", async () => {
+      const p = await project(lin)
+      const admin = (await t.http.post(`${base}/roles`).set(lin.auth).send({ name: 'Admins', permissions: ['project.admin'] }).expect(201)).body.id
+      await setRole(lin, p.id, nia.user.id, admin).expect(200)
+      const res = await t.http.patch(`${base}/projects/${p.id}`).set(nia.auth).send({ version: p.version, lead: nia.user.id })
+      expect(res.status).toBe(403)
+      expect(await access(nia, p.id)).not.toContain('time.approve')
+    })
+
+    it('a new lead joins with the default role set in the same change', async () => {
+      const ids = await roleIds()
+      const p = await project(lin)
+      await t.http.patch(`${base}/projects/${p.id}`).set(lin.auth).send({ version: p.version, lead: nia.user.id, defaultRole: ids.viewer }).expect(200)
+      const [row] = await t.db.query(`SELECT role_id FROM project_members WHERE project_id = $1 AND user_id = $2`, [p.id, nia.user.id])
+      expect(row.role_id).toBe(ids.viewer)
+    })
+
     const setRole = (who: Signed, projectId: string, userId: string, roleId: string) =>
       t.http.put(`${base}/projects/${projectId}/members/${userId}`).set(who.auth).send({ roleId })
     /** nia leads a project where both her role and the default are Viewer; lin holds Administrator there. */

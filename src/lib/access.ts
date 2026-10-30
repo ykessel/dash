@@ -29,9 +29,12 @@ export const PERMISSION_GROUPS: { label: string; keys: Permission[] }[] = [
   { label: 'Time', keys: ['time.log', 'time.edit_own', 'time.edit_any', 'time.delete_own', 'time.delete_any', 'time.view_all', 'time.approve'] },
 ]
 
-/** What the server said I may do in a project; the server still checks every write. */
+/**
+ * What the server said I may do in a project; the server still checks every write. A project I have
+ * no permissions for yet (just created here or elsewhere, before /access comes back) is left to it.
+ */
 export const can = (access: Data['access'], projectId: string, p: Permission): boolean =>
-  access[projectId]?.includes(p) ?? false
+  access[projectId]?.includes(p) ?? true
 
 /**
  * Edit or delete a task: the `_any` permission, or `_own` on a task assigned to me. The server also
