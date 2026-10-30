@@ -15,6 +15,8 @@ export class Project {
   @Column({ name: 'lead_id', type: 'uuid', nullable: true }) leadId: string | null
   /** The role of workspace members who aren't on the project's list (Jira's "open" access). */
   @Column({ name: 'default_role_id', type: 'uuid' }) defaultRoleId: string
+  @Column({ name: 'approval_enabled', type: 'boolean', default: false }) approvalEnabled: boolean
+  @Column({ name: 'approval_period', type: 'text', default: 'week' }) approvalPeriod: 'week' | 'month'
   @Column({ type: 'int', default: 1 }) version: number
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) createdAt: Date
   @Column({ name: 'deleted_at', type: 'timestamptz', nullable: true }) deletedAt: Date | null
