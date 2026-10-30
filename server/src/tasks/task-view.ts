@@ -1,3 +1,4 @@
+import { remainingOf } from '../time/totals'
 import type { Priority, Status } from '../common/enums'
 import type { Subtask, Task, TaskComment } from './task.entity'
 
@@ -18,13 +19,17 @@ export interface TaskView {
   comments: CommentView[]
   doneAt?: string
   order: number
+  /** Everyone's live worklogs on this task, in minutes. */
+  loggedMinutes: number
+  /** The remaining estimate in minutes: set by hand, or estimate minus logged. */
+  remainingMinutes: number
   version: number
 }
 
 export const toSubtaskView = (s: Subtask): SubtaskView => ({ id: s.id, title: s.title, done: s.done })
 export const toCommentView = (c: TaskComment): CommentView => ({ id: c.id, who: c.authorId ?? '', text: c.body, at: c.createdAt.getTime() })
 
-export function toTaskView(t: Task, subtasks: Subtask[], comments: TaskComment[]): TaskView {
+export function toTaskView(t: Task, subtasks: Subtask[], comments: TaskComment[], logged = 0): TaskView {
   return {
     id: t.id,
     title: t.title,
@@ -34,6 +39,8 @@ export function toTaskView(t: Task, subtasks: Subtask[], comments: TaskComment[]
     priority: t.priority,
     due: t.dueDate ?? '',
     estimate: t.estimate,
+    loggedMinutes: logged,
+    remainingMinutes: remainingOf(t.estimate, t.remainingMinutes, logged),
     subtasks: [...subtasks].sort((a, b) => a.position - b.position).map(toSubtaskView),
     comments: [...comments].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()).map(toCommentView),
     ...(t.doneAt ? { doneAt: t.doneAt } : {}),

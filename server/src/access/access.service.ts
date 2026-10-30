@@ -38,6 +38,23 @@ export class AccessService {
     return Object.fromEntries(rows.map(r => [r.id, [...this.toSet(r, m)]]))
   }
 
+  /** Current workspace members whose permissions on the project include any of `any`. */
+  async holders(wsId: string, projectId: string, any: Permission[], em?: EntityManager): Promise<string[]> {
+    const rows: { user_id: string; role: Membership['role']; lead_id: string | null; permissions: string[] }[] = await (em ?? this.ds).query(
+      `SELECT m.user_id, m.role, p.lead_id, r.permissions
+         FROM memberships m
+         JOIN projects p ON p.id = $2 AND p.workspace_id = m.workspace_id
+         LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = m.user_id
+         JOIN project_roles r ON r.id = coalesce(pm.role_id, p.default_role_id)
+        WHERE m.workspace_id = $1`, [wsId, projectId])
+    return rows
+      .filter(r => {
+        const have = effectivePermissions({ access: r.role, isLead: r.lead_id === r.user_id, rolePermissions: parsePermissions(r.permissions) })
+        return any.some(p => have.has(p))
+      })
+      .map(r => r.user_id)
+  }
+
   private toSet(r: Row, m: Membership): Set<Permission> {
     return effectivePermissions({ access: m.role, isLead: r.lead_id === m.userId, rolePermissions: parsePermissions(r.permissions) })
   }

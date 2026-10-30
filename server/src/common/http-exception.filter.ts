@@ -10,6 +10,7 @@ export const ERROR_FIELDS = [
   'date', 'dur', 'where', 'kind', 'people', 'from', 'to',
   'plannedSec', 'actualSec', 'label', 'taskId', 'notify', 'look', 'range', 'session', 'pause', 'avatarSkin', 'mentions',
   'description', 'permissions', 'roleId', 'defaultRole',
+  'minutes', 'workDate', 'remaining', 'periodStart', 'comment',
 ] as const
 export type ErrorField = (typeof ERROR_FIELDS)[number]
 

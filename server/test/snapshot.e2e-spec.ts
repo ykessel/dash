@@ -42,7 +42,7 @@ describe('snapshot', () => {
     await seed(baseB, wsB, kai, null)
     const snap = (await t.http.get(`${base}/snapshot`).set(lin.auth).expect(200)).body
     expect(Object.keys(snap).sort()).toEqual(['access', 'events', 'focus', 'me', 'notices', 'people', 'prefs', 'projects', 'roles', 'tasks', 'version'])
-    expect(snap.version).toBe(4)
+    expect(snap.version).toBe(5)
     expect(snap.roles.map((r: { key: string }) => r.key)).toEqual(['administrator', 'member', 'viewer'])
     expect(snap.access[a.project.id]).toContain('project.admin')
     expect(snap.me).toBe(lin.user.id)

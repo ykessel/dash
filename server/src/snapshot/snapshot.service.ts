@@ -11,7 +11,7 @@ import { MembersService } from '../workspaces/members.service'
 import type { Membership } from '../workspaces/membership.entity'
 
 /** The frontend's `DATA_VERSION`: the snapshot has the same shape as its `Data`. */
-export const DATA_VERSION = 4
+export const DATA_VERSION = 5
 
 @Injectable()
 export class SnapshotService {

@@ -10,6 +10,7 @@ export type DomainEventType =
   | 'event.created' | 'event.updated' | 'event.deleted'
   | 'notification.created'
   | 'role.created' | 'role.updated' | 'role.deleted' | 'project.access_changed'
+  | 'worklog.created' | 'worklog.updated' | 'worklog.deleted' | 'task.time_changed' | 'timesheet.changed'
 
 /** Something that changed in a workspace. Services publish it; RealtimeBridge decides who hears it. */
 export interface DomainEvent {

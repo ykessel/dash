@@ -17,6 +17,7 @@ import { WorkspaceRefs } from '../workspaces/refs.service'
 import { UUID } from '../workspaces/workspace-member.guard'
 import { placeOrder } from './order'
 import { type ActivityKind, Subtask, Task, TaskActivity, TaskComment } from './task.entity'
+import { loggedByTask } from '../time/totals'
 import { type TaskView, toTaskView } from './task-view'
 
 export interface TaskInput {
@@ -277,10 +278,11 @@ export class TasksService {
   private async views(rows: Task[]): Promise<TaskView[]> {
     if (!rows.length) return []
     const ids = rows.map(t => t.id)
-    const [subs, comments] = await Promise.all([
+    const [subs, comments, logged] = await Promise.all([
       this.subtasks.findBy({ taskId: In(ids) }),
       this.comments.findBy({ taskId: In(ids) }),
+      loggedByTask(this.ds, ids),
     ])
-    return rows.map(t => toTaskView(t, subs.filter(s => s.taskId === t.id), comments.filter(c => c.taskId === t.id)))
+    return rows.map(t => toTaskView(t, subs.filter(s => s.taskId === t.id), comments.filter(c => c.taskId === t.id), logged.get(t.id) ?? 0))
   }
 }
