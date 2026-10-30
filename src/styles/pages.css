@@ -910,3 +910,32 @@ html.is-card-dragging, html.is-card-dragging * { cursor: grabbing !important; us
 .pp-add .input { min-height: 34px; height: 34px; padding-block: 0; width: auto; }
 .pp-add small { color: var(--text-2); font-size: var(--fs-sm); }
 .tp-sub.is-readonly { cursor: default; }
+
+/* Task → Log work */
+.lw__bar { display: flex; height: 8px; border-radius: 99px; overflow: hidden; background: var(--fill); margin: 4px 0 10px; }
+.lw__logged { background: var(--accent); }
+.lw__left { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.lw__nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0 0 12px; }
+.lw__nums dt { font-size: var(--fs-sm); color: var(--text-2); }
+.lw__nums dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.lw__form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.lw__form .input { width: 110px; min-height: 34px; height: 34px; padding-block: 0; }
+.lw__form .input[type=date] { width: 150px; }
+.lw__form .lw__comment { flex: 1; min-width: 140px; width: auto; }
+.lw__note { flex-basis: 100%; margin: 4px 0 0; font-size: var(--fs-sm); color: var(--text-2); }
+.lw__err { flex-basis: 100%; margin: 4px 0 0; font-size: var(--fs-sm); color: var(--danger); }
+.lw__list { display: grid; gap: 2px; margin-top: 12px; }
+.lw__item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 10px; align-items: start; padding: 8px 0; border-top: 1px solid var(--sep); }
+.lw__item:first-child { border-top: 0; }
+.lw__item > .lw__form { grid-column: 1 / -1; }
+.lw__item small { color: var(--text-2); }
+.lw__item p { margin: 2px 0 0; overflow-wrap: anywhere; }
+
+/* Project → Time approval */
+.pd-approval .set-rows > li { justify-content: space-between; }
+.pd-approval .set-rows > li > div:first-child { flex: 1; min-width: 0; display: grid; }
+.pd-approval .set-rows small { color: var(--text-2); font-size: var(--fs-sm); }
+.pd-approval .is-off { opacity: .55; }
+
+/* Admins get a role picker per person: one person per row so names keep their room. */
+.ov__people:has(.pp-row) { grid-template-columns: 1fr; }

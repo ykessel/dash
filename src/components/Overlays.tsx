@@ -5,6 +5,7 @@ import { go } from '../lib/router'
 import { useStore, type Drawer as DrawerState, type Modal as ModalState } from '../store'
 import { Icon } from './Icon'
 import { Avatar, Check, Prio, ProjectTag, Ring, Seg, Stack, usePresence } from './ui'
+import { LogWork } from './LogWork'
 
 export const STATUS_LABEL: Record<Status, string> = { todo: 'To do', progress: 'In progress', review: 'In review', done: 'Done' }
 
@@ -409,6 +410,8 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
           </form>
         )}
       </section>
+
+      <LogWork t={t} />
 
       <section className="tp__block">
         <header><h3>Comments</h3></header>

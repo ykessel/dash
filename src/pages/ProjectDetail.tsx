@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { LineChart } from '../components/Charts'
 import { Icon } from '../components/Icon'
 import { PRESENCE_LABEL } from '../components/Overlays'
-import { Avatar, CountUp, Prio, Stack, Stat } from '../components/ui'
+import { Avatar, CountUp, Prio, Seg, Stack, Stat, Switch } from '../components/ui'
 import type { Status, Task } from '../data/types'
 import { addDays, diffDays, fmtTime, iso, parse, relDue, short, todayIso, weekday } from '../lib/date'
 import { daysLeft, projectProgress, sortByDue } from '../lib/metrics'
@@ -78,6 +78,7 @@ export function ProjectDetail({ id }: { id: string }) {
         <div className="pd__col">
           <Overview id={p.id} />
           <Milestones id={p.id} />
+          <TimeApproval id={p.id} />
           <ComingUp id={p.id} />
         </div>
         <div className="pd__col">
@@ -201,6 +202,31 @@ function People({ id }: { id: string }) {
       )}
       {!admin && <p className="pp-add"><small>Everyone else in the workspace: {roleName(p.defaultRole)}</small></p>}
     </>
+  )
+}
+
+/* ---------------- Time approval (project admins) ---------------- */
+
+function TimeApproval({ id }: { id: string }) {
+  const { data, can, updateProject } = useStore()
+  const p = data.projects.find(x => x.id === id)!
+  if (!can(p.id, 'project.admin')) return null
+  return (
+    <section className="card glass rise pd-approval" style={{ ['--i' as string]: 2 }}>
+      <div className="card__head"><div><h2>Time approval</h2><p>Hours are locked once submitted for a period</p></div></div>
+      <ul className="set-rows">
+        <li>
+          <div><b>Require time approval</b><small>People submit their hours; approvers accept or send them back</small></div>
+          <Switch on={p.approvalEnabled} onToggle={() => updateProject(p.id, { approvalEnabled: !p.approvalEnabled })} label="Require time approval" />
+        </li>
+        <li className={p.approvalEnabled ? '' : 'is-off'}>
+          <div><b>Period</b><small>New submissions use it; earlier ones keep theirs</small></div>
+          <Seg size="sm" value={p.approvalPeriod} label="Approval period"
+            onChange={v => { if (p.approvalEnabled) updateProject(p.id, { approvalPeriod: v }) }}
+            options={[{ value: 'week', label: 'Weekly' }, { value: 'month', label: 'Monthly' }]} />
+        </li>
+      </ul>
+    </section>
   )
 }
 
