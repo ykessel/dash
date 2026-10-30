@@ -372,7 +372,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (p.workspaceId === workspaceId && (type === 'project.access_changed' || type === 'project.created' || (type === 'member.updated' && p.member?.id === user.id))) {
           refreshAccess(workspaceId)
         }
-        if (type.startsWith('worklog.') || type === 'timesheet.changed') setTimeTick(n => n + 1)
+        // project.updated: approval on/off or a new period type changes what's locked.
+        if (type.startsWith('worklog.') || type === 'timesheet.changed' || type === 'project.updated') setTimeTick(n => n + 1)
         setData(d => applyEvent(d, type, payload, workspaceId))
       },
       () => { loadSnapshot(workspaceId).catch(() => { /* try again on next reconnect */ }) },

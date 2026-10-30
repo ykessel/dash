@@ -56,6 +56,38 @@ describe('worklogs around tasks and people', () => {
     expect((await t.http.get(`${base}/tasks/${x.id}`).set(lin.auth).expect(200)).body.project).toBe(from.id)
   })
 
+  it("moving a task into a project where its hours fall in a locked period is 409 task_has_locked_time", async () => {
+    const from = await project('A')
+    const to = await project('B')
+    const x = await task(from.id)
+    await log(x.id, 30)
+    await lockToday(to.id, 'approved')
+    const res = await t.http.patch(`${base}/tasks/${x.id}`).set(lin.auth).send({ version: await version(x.id), project: to.id }).expect(409)
+    expect(res.body.code).toBe('task_has_locked_time')
+  })
+
+  it("restoring a task whose hours fall in a locked period is 409 task_has_locked_time", async () => {
+    const p = await project()
+    const x = await task(p.id)
+    await log(x.id, 30)
+    await t.http.delete(`${base}/tasks/${x.id}`).set(lin.auth).expect(204)
+    await lockToday(p.id, 'approved')
+    expect((await t.http.post(`${base}/tasks/${x.id}/restore`).set(lin.auth).expect(409)).body.code).toBe('task_has_locked_time')
+  })
+
+  it('a day over 24h after a restore still takes edits that do not add time', async () => {
+    const p = await project()
+    const a = await task(p.id)
+    const b = await task(p.id)
+    await log(a.id, 1000)
+    await t.http.delete(`${base}/tasks/${a.id}`).set(lin.auth).expect(204)
+    const w = (await log(b.id, 500)).body.worklog
+    await t.http.post(`${base}/tasks/${a.id}/restore`).set(lin.auth).expect(200)
+    await t.http.patch(`${base}/worklogs/${w.id}`).set(nia.auth).send({ comment: 'review' }).expect(200)
+    await t.http.patch(`${base}/worklogs/${w.id}`).set(nia.auth).send({ minutes: 400 }).expect(200)
+    expect((await t.http.patch(`${base}/worklogs/${w.id}`).set(nia.auth).send({ minutes: 450 }).expect(422)).body.code).toBe('day_over_24h')
+  })
+
   it('deleting a task hides its worklogs from the cap; restoring brings them back', async () => {
     const p = await project()
     const a = await task(p.id)

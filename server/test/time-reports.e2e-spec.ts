@@ -123,6 +123,18 @@ describe('timesheet and time reports', () => {
     expect(one.worklogs.map((w: { user: string }) => w.user)).toEqual([nia.user.id])
   })
 
+  it('a project filter that is not an id is 400, not 500', async () => {
+    await t.http.get(`${base}/timesheet`).query({ from: today(), to: today(), project: 'nope' }).set(nia.auth).expect(400)
+  })
+
+  it('csv cells that look like formulas are neutralised', async () => {
+    const a = await project('=HYPERLINK("x")')
+    const x = await task(a.id)
+    await worklog(a.id, x.id, nia.user.id, today(), 60)
+    const res = await t.http.get(`${base}/time-reports.csv`).query({ from: today(), to: today(), groupBy: 'project', bucket: 'day' }).set(nia.auth).expect(200)
+    expect(res.text.split('\n')[1]).toBe(`"'=HYPERLINK(""x"")",${today()},1.00`)
+  })
+
   it('a range over the limit is 400 invalid on range', async () => {
     const sheet = await t.http.get(`${base}/timesheet`).query({ from: shift(today(), -70), to: today() }).set(nia.auth).expect(400)
     expect(sheet.body).toMatchObject({ code: 'invalid', field: 'range' })

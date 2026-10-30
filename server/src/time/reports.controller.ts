@@ -2,7 +2,7 @@ import { Controller, Get, Param, Query, Res, UseGuards } from '@nestjs/common'
 import type { Response } from 'express'
 import { z } from 'zod'
 import { JwtAuthGuard } from '../auth/jwt-auth.guard'
-import { dateField } from '../common/dates'
+import { dateField, uuidField } from '../common/dates'
 import { parseBody } from '../common/validate'
 import { toCsv } from '../insights/csv'
 import type { Membership } from '../workspaces/membership.entity'
@@ -14,7 +14,7 @@ const SheetQuery = z.object({
   from: dateField,
   to: dateField,
   user: z.string().default('me'),
-  project: z.string().optional(),
+  project: uuidField.optional(),
 })
 const ReportQuery = z.object({
   from: dateField,

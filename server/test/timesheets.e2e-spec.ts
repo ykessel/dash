@@ -113,6 +113,19 @@ describe('timesheet approval', () => {
     await log(x.id, shift(old, 8)).expect(201)
   })
 
+  it('after switching to monthly, a rejected week revives as the whole month; a pending week blocks it with 409 period_type_changed', async () => {
+    const { p } = await setup()
+    // 2026-06-01 is both a Monday and the first of a month.
+    await t.http.post(ts(p.id, 'submit')).set(nia.auth).send({ periodStart: '2026-06-01' }).expect(201)
+    await t.http.post(ts(p.id, `${nia.user.id}/reject`)).set(lin.auth).send({ periodStart: '2026-06-01', comment: 'Fix it' }).expect(201)
+    await t.http.post(ts(p.id, 'submit')).set(lin.auth).send({ periodStart: '2026-06-01' }).expect(201)
+    const v = (await t.http.get(`${base}/projects/${p.id}`).set(lin.auth)).body.version
+    await t.http.patch(`${base}/projects/${p.id}`).set(lin.auth).send({ version: v, approvalPeriod: 'month' }).expect(200)
+    const month = await t.http.post(ts(p.id, 'submit')).set(nia.auth).send({ periodStart: '2026-06-01' }).expect(201)
+    expect(month.body).toMatchObject({ period: 'month', start: '2026-06-01', end: '2026-06-30', status: 'submitted' })
+    expect((await t.http.post(ts(p.id, 'submit')).set(lin.auth).send({ periodStart: '2026-06-01' }).expect(409)).body.code).toBe('period_type_changed')
+  })
+
   it('submitting notifies approvers; approving and rejecting notify the person', async () => {
     const { p } = await setup()
     await t.http.post(ts(p.id, 'submit')).set(nia.auth).send({ periodStart: week() }).expect(201)

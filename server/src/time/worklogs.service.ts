@@ -76,12 +76,15 @@ export class WorklogsService {
     const result = await this.ds.transaction(async em => {
       const w = await this.liveWorklog(em, wsId, id)
       await this.assertMay(wsId, w, by, 'edit')
+      // Same lock order as create (task row, then the day's advisory lock) so the two can't deadlock.
+      await this.liveTask(em, wsId, w.taskId, true)
       const date = patch.date ?? w.workDate
       const minutes = patch.minutes ?? w.minutes
       if (patch.date !== undefined) this.assertNotFuture(date, by)
       if (await lockedOn(em, w.projectId, w.userId, w.workDate)) throw periodLocked()
       if (date !== w.workDate && await lockedOn(em, w.projectId, w.userId, date)) throw periodLocked()
-      await this.assertDayFits(em, wsId, w.userId, date, minutes, w.id)
+      // Only added time counts against the cap: a day already over it (a restored task) still takes edits.
+      if (date !== w.workDate || minutes > w.minutes) await this.assertDayFits(em, wsId, w.userId, date, minutes, w.id)
       await em.update(Worklog, { id: w.id }, {
         workDate: date, minutes, ...(patch.comment !== undefined ? { comment: patch.comment } : {}), updatedBy: by.userId,
       })
@@ -95,6 +98,7 @@ export class WorklogsService {
     const result = await this.ds.transaction(async em => {
       const w = await this.liveWorklog(em, wsId, id)
       await this.assertMay(wsId, w, by, 'delete')
+      await this.liveTask(em, wsId, w.taskId, true)
       if (await lockedOn(em, w.projectId, w.userId, w.workDate)) throw periodLocked()
       await em.update(Worklog, { id: w.id }, { deletedAt: this.clock.now(), updatedBy: by.userId })
       await this.shiftRemaining(em, w.taskId, -w.minutes)

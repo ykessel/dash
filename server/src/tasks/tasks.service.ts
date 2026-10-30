@@ -137,7 +137,8 @@ export class TasksService {
     await this.ds.transaction(async em => {
       if (project !== undefined) await this.refs.lockLiveProject(em, wsId, project)
       // Hours someone already submitted or got approved stay in the project they were submitted for.
-      if (changesProject && await taskHasLockedTime(em, id)) throw taskHasLockedTimeError()
+      // …and can't land in a period of the destination that's already submitted or approved.
+      if (changesProject && (await taskHasLockedTime(em, id) || await taskHasLockedTime(em, id, project))) throw taskHasLockedTimeError()
       if (moved) Object.assign(set, await this.columnChange(wsId, task, status, em))
       // Conditional on the version: of two edits racing from the same version, one gets 409.
       const res = await em.update(Task, { id, version }, { ...set, version: version + 1 })
@@ -173,6 +174,8 @@ export class TasksService {
       // A task can't come back into a deleted project; the lock keeps the project live until commit.
       const live = await em.query(`SELECT 1 FROM projects WHERE id = $1 AND deleted_at IS NULL FOR SHARE`, [task.projectId])
       if (!live.length) throw projectDeleted()
+      // Its hours come back too, so they can't reappear inside a period submitted or approved meanwhile.
+      if (await taskHasLockedTime(em, id)) throw taskHasLockedTimeError()
       await em.update(Task, { id, deletedAt: Not(IsNull()) }, { deletedAt: null, version: () => 'version + 1' })
       await this.recordActivity(task, actor.userId, 'restored', undefined, undefined, em)
     })

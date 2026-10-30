@@ -16,15 +16,19 @@ export async function lockedOn(db: DataSource | EntityManager, projectId: string
   return rows.length > 0
 }
 
-/** Does any live worklog of this task fall in a locked period of its author? */
-export async function taskHasLockedTime(db: DataSource | EntityManager, taskId: string): Promise<boolean> {
+/**
+ * Does any live worklog of this task fall in a locked period of its author? In its own project by
+ * default, or in `inProject` — where a move would put the hours. The task itself may be deleted
+ * (restore asks too).
+ */
+export async function taskHasLockedTime(db: DataSource | EntityManager, taskId: string, inProject?: string): Promise<boolean> {
   const rows = await db.query(
     `SELECT 1 FROM worklogs w
-       JOIN projects p ON p.id = w.project_id AND p.approval_enabled
-       JOIN timesheet_periods tp ON tp.project_id = w.project_id AND tp.user_id = w.user_id
+       JOIN projects p ON p.id = coalesce($2::uuid, w.project_id) AND p.approval_enabled
+       JOIN timesheet_periods tp ON tp.project_id = p.id AND tp.user_id = w.user_id
         AND tp.status IN ('submitted', 'approved') AND w.work_date BETWEEN tp.period_start AND tp.period_end
       WHERE w.task_id = $1 AND w.deleted_at IS NULL
-      LIMIT 1`, [taskId])
+      LIMIT 1`, [taskId, inProject ?? null])
   return rows.length > 0
 }
 

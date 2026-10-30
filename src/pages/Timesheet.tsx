@@ -78,8 +78,9 @@ function periodOf(p: Project, user: string, week: string, periods: TimePeriod[])
   return { start, row: periods.find(x => x.project === p.id && x.user === user && x.start <= week && x.end >= week) }
 }
 
-const locked = (periods: TimePeriod[], project: string, user: string, day: string) =>
-  periods.some(x => x.project === project && x.user === user && x.status !== 'rejected' && x.start <= day && x.end >= day)
+/** Same rule as the server: once approval is off, old rows lock nothing. */
+const locked = (p: Project, periods: TimePeriod[], user: string, day: string) =>
+  p.approvalEnabled && periods.some(x => x.project === p.id && x.user === user && x.status !== 'rejected' && x.start <= day && x.end >= day)
 
 /* ---------------- My time ---------------- */
 
@@ -130,7 +131,7 @@ function MyWeek({ week }: { week: string }) {
                       {p.approvalEnabled && (!row || row.status === 'rejected') && start <= today && (
                         <button className="btn btn--glass btn--sm" onClick={() => submitPeriod(p.id, start)}>Submit for approval</button>
                       )}
-                      {row?.status === 'submitted' && <button className="btn btn--ghost btn--sm" onClick={() => withdrawPeriod(p.id, start)}>Withdraw</button>}
+                      {row?.status === 'submitted' && <button className="btn btn--ghost btn--sm" onClick={() => withdrawPeriod(p.id, row.start)}>Withdraw</button>}
                     </th>
                   </tr>
                   {mine.map(r => {
@@ -142,7 +143,7 @@ function MyWeek({ week }: { week: string }) {
                         {ds.map(d => (
                           <td key={d} className={d === today ? 'is-today' : ''}>
                             <Cell task={r.id} day={d} logs={own.filter(w => w.date === d)}
-                              disabled={d > today || locked(sheet.periods, pid, me.id, d)} canCreate={canLog} />
+                              disabled={d > today || locked(p, sheet.periods, me.id, d)} canCreate={canLog} />
                           </td>
                         ))}
                         <td className="ts-total num">{formatMinutes(sum(own))}</td>
@@ -255,11 +256,11 @@ function TeamProject({ p, week, sheet, i }: { p: Project; week: string; sheet: T
   const logs = sheet.worklogs.filter(w => w.project === p.id)
   const people = [...new Set([...logs.map(w => w.user), ...sheet.periods.filter(x => x.project === p.id).map(x => x.user)])]
   const approver = can(p.id, 'time.approve')
-  const start = periodStartOf(week, p.approvalPeriod)
-
+  /** The row on screen may predate a weekly/monthly switch, so act on its own start. */
   const reject = async (user: string) => {
-    if (!comment.trim()) return
-    if (await reviewPeriod(p.id, user, start, 'reject', comment.trim())) { setRejecting(null); setComment('') }
+    const row = periodOf(p, user, week, sheet.periods).row
+    if (!comment.trim() || !row) return
+    if (await reviewPeriod(p.id, user, row.start, 'reject', comment.trim())) { setRejecting(null); setComment('') }
   }
 
   return (

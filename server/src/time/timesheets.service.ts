@@ -45,15 +45,21 @@ export class TimesheetsService {
     }
     const row = await this.ds.transaction(async em => {
       const cur = await this.row(em, p.id, by.userId, start)
+      if (cur && cur.status !== 'rejected' && cur.period !== p.approvalPeriod) {
+        throw new AppError(409, 'period_type_changed', `Part of this ${p.approvalPeriod} was sent as a ${cur.period}. Withdraw or reopen that ${cur.period} first.`)
+      }
       if (cur && cur.status !== 'rejected') throw new AppError(409, 'period_already_submitted', 'You already submitted that period.')
-      const fields = { status: 'submitted' as const, submittedAt: this.clock.now(), reviewerId: null, reviewedAt: null, comment: '' }
+      // A rejected row revives with the project's current period type, so its lock covers what the UI says.
+      const fields = {
+        status: 'submitted' as const, submittedAt: this.clock.now(), reviewerId: null, reviewedAt: null, comment: '',
+        period: p.approvalPeriod, periodEnd: periodEnd(start, p.approvalPeriod),
+      }
       if (cur) {
         await em.update(TimesheetPeriod, { id: cur.id }, fields)
       } else {
         try {
           await em.insert(TimesheetPeriod, {
-            workspaceId: wsId, projectId: p.id, userId: by.userId, periodStart: start,
-            periodEnd: periodEnd(start, p.approvalPeriod), period: p.approvalPeriod, ...fields,
+            workspaceId: wsId, projectId: p.id, userId: by.userId, periodStart: start, ...fields,
           })
         } catch (e) {
           if (isUniqueViolation(e)) throw new AppError(409, 'period_already_submitted', 'You already submitted that period.')
