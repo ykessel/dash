@@ -90,6 +90,18 @@ After that:
 
 Last restore drill: _not yet_.
 
+## Roles
+
+Every workspace has three built-in project roles: Administrator, Member and Viewer. Their `key`
+column (`administrator`, `member`, `viewer`) is what the code relies on; they can't be edited or
+deleted, only duplicated into custom roles. Each project member holds one role
+(`project_members.role_id`), and `projects.default_role_id` covers everyone in the workspace who
+isn't on the project's list. Workspace owners and admins always have every permission, and a
+project's lead also gets `project.admin`, `time.view_all` and `time.approve`. The
+`ProjectRoles1793405500000` migration seeds the three roles in every existing workspace and puts
+every existing member and every project's default on Member, so nobody loses access on deploy.
+Owners and admins gain the right to delete anyone's comment.
+
 ## Scaling past one machine
 
 1. Create a Redis database (Upstash, same region) and run `fly secrets set REDIS_URL=rediss://…`.
