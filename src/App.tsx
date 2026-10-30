@@ -9,6 +9,7 @@ import { AuthPage } from './pages/Auth'
 import { Calendar } from './pages/Calendar'
 import { Home } from './pages/Home'
 import { Insights } from './pages/Insights'
+import { Timesheet } from './pages/Timesheet'
 import { ProjectDetail } from './pages/ProjectDetail'
 import { Projects } from './pages/Projects'
 import { Settings } from './pages/Settings'
@@ -129,6 +130,7 @@ export function App() {
     case 'calendar': page = <Calendar />; break
     case 'projects': page = route.param ? <ProjectDetail id={route.param} /> : <Projects />; break
     case 'insights': page = <Insights />; break
+    case 'timesheet': page = <Timesheet />; break
     case 'team': page = <Team />; break
     case 'settings': page = <Settings />; break
     default: page = <Home />

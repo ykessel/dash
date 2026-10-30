@@ -12,12 +12,13 @@ const NAV: { route: RouteName; label: string; icon: string }[] = [
   { route: 'calendar', label: 'Calendar', icon: 'calendar' },
   { route: 'projects', label: 'Projects', icon: 'folder' },
   { route: 'insights', label: 'Insights', icon: 'chart' },
+  { route: 'timesheet', label: 'Timesheet', icon: 'clock' },
   { route: 'team', label: 'Team', icon: 'team' },
   { route: 'settings', label: 'Settings', icon: 'gear' },
 ]
 
 export const TITLES: Record<RouteName, string> = {
-  home: 'Home', tasks: 'Tasks', calendar: 'Calendar', projects: 'Projects', insights: 'Insights', team: 'Team', settings: 'Settings',
+  home: 'Home', tasks: 'Tasks', calendar: 'Calendar', projects: 'Projects', insights: 'Insights', timesheet: 'Timesheet', team: 'Team', settings: 'Settings',
   signin: 'Sign in', signup: 'Sign up', auth: 'Signing in', invite: 'Invite', signedout: 'Signed out',
 }
 
