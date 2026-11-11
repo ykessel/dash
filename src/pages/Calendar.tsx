@@ -322,7 +322,8 @@ function Week({ start }: { start: Date }) {
                   {evs.filter(e => e.date === k).map((e, i) => {
                     const top = (e.start - H0 * 60) / 60
                     const h = e.dur / 60
-                    const short = e.dur < 45
+                    // Under an hour the block is too short for two lines at the smallest --hh.
+                    const short = e.dur < 60
                     return (
                       <button
                         key={e.id}
@@ -331,8 +332,11 @@ function Week({ start }: { start: Date }) {
                         style={{ top: `calc(var(--hh) * ${top})`, height: `max(22px, calc(var(--hh) * ${h}))`, animationDelay: `${100 + i * 40}ms` }}
                         onClick={ev => { ev.stopPropagation(); openDrawer({ kind: 'event', id: e.id }) }}
                       >
-                        <b>{e.title}</b>
-                        <small>{fmtTime(e.start)}{short ? '' : ` · ${e.where}`}</small>
+                        <span className="cal-blk__ic" title={KIND[e.kind].label}><Icon name={KIND[e.kind].icon} size={13} /></span>
+                        <span className="cal-blk__txt">
+                          <b>{e.title}</b>
+                          <small>{fmtTime(e.start)}{short ? '' : ` · ${e.where}`}</small>
+                        </span>
                       </button>
                     )
                   })}

@@ -76,12 +76,6 @@ export function ProjectDetail({ id }: { id: string }) {
 
       <div className="pd" data-hue={p.hue}>
         <div className="pd__col">
-          <Overview id={p.id} />
-          <Milestones id={p.id} />
-          <TimeApproval id={p.id} />
-          <ComingUp id={p.id} />
-        </div>
-        <div className="pd__col">
           <section className="card glass rise pd-burn" style={{ ['--i' as string]: 1 }}>
             <div className="card__head">
               <div><h2>Burn-up</h2><p>Tasks done against the total, over the project’s life</p></div>
@@ -104,13 +98,20 @@ export function ProjectDetail({ id }: { id: string }) {
             />
           </section>
           <TaskGroups id={p.id} />
+          <ComingUp id={p.id} />
+        </div>
+        <div className="pd__col">
+          <Overview id={p.id} />
+          <Milestones id={p.id} />
+          <People id={p.id} />
+          <TimeApproval id={p.id} />
         </div>
       </div>
     </>
   )
 }
 
-/* ---------------- Overview: lead, status, timeline, people ---------------- */
+/* ---------------- Overview: lead, status, timeline ---------------- */
 
 function Overview({ id }: { id: string }) {
   const { data, person, openDrawer } = useStore()
@@ -143,7 +144,6 @@ function Overview({ id }: { id: string }) {
           <span><small>{p.status === 'shipped' ? 'Shipped' : 'Due'}</small>{short(p.due)}</span>
         </div>
       </div>
-      <People id={p.id} />
     </section>
   )
 }
@@ -164,8 +164,8 @@ function People({ id }: { id: string }) {
   )
 
   return (
-    <>
-      <h3 className="ov__h">People <span className="badge num">{p.members.length}</span></h3>
+    <section className="card glass rise pd-people" style={{ ['--i' as string]: 3 }}>
+      <div className="card__head"><h2>People <span className="badge num">{p.members.length}</span></h2></div>
       <ul className="ov__people">
         {p.members.map(mid => {
           const m = person(mid)
@@ -201,7 +201,7 @@ function People({ id }: { id: string }) {
         </div>
       )}
       {!admin && <p className="pp-add"><small>Everyone else in the workspace: {roleName(p.defaultRole)}</small></p>}
-    </>
+    </section>
   )
 }
 
