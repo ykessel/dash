@@ -456,17 +456,16 @@ html.is-card-dragging, html.is-card-dragging * { cursor: grabbing !important; us
   right: 0;
   z-index: 1;
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  align-items: flex-start;
+  gap: 7px;
   min-height: 22px;
-  padding: 6px 8px 6px 9px;
+  padding: 4px 8px 4px 5px;
   overflow: hidden;
   text-align: left;
   border: 2px solid transparent;
   border-radius: 12px;
   background-clip: padding-box;
-  background-color: color-mix(in srgb, var(--hue) 20%, transparent);
-  box-shadow: inset 3px 0 0 var(--hue);
+  background-color: color-mix(in srgb, var(--hue) 18%, transparent);
   cursor: pointer;
   transition: background-color 0.2s;
   animation: rise 0.45s var(--ease) backwards;
@@ -474,10 +473,17 @@ html.is-card-dragging, html.is-card-dragging * { cursor: grabbing !important; us
 .cal-blk:hover { background-color: color-mix(in srgb, var(--hue) 30%, transparent); }
 .cal-blk b { font-size: 12.5px; font-weight: 650; line-height: 1.2; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cal-blk small { font-size: 12px; font-weight: 560; line-height: 1.2; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cal-blk.is-short { flex-direction: row; align-items: center; gap: 6px; padding-block: 0; }
+.cal-blk__ic { flex: none; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; background: var(--hue); color: #fff; }
+.cal-blk__ic .ico { width: 13px; height: 13px; }
+.cal-blk__txt { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; padding-top: 1px; }
+.cal-blk.is-short { align-items: center; padding-block: 0; }
+.cal-blk.is-short .cal-blk__txt { flex-direction: row; align-items: center; gap: 6px; padding-top: 0; }
 .cal-blk.is-short small { flex: none; }
+.cal-blk.is-short .cal-blk__ic { width: 17px; height: 17px; border-radius: 5px; }
+.cal-blk.is-short .cal-blk__ic .ico { width: 11px; height: 11px; }
 .cal-blk.is-past { background-color: color-mix(in srgb, var(--hue) 10%, transparent); }
 .cal-blk.is-past b { color: var(--text-2); }
+.cal-blk.is-past .cal-blk__ic { background: color-mix(in srgb, var(--hue) 55%, transparent); }
 .cal-now { position: absolute; left: -1px; right: 0; z-index: 2; height: 2px; margin-top: -1px; background: var(--danger); pointer-events: none; }
 .cal-now::before { content: ''; position: absolute; top: -4px; left: -5px; width: 10px; height: 10px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 25%, transparent); }
 
