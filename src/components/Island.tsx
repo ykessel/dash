@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useStore } from '../store'
 import { Icon } from './Icon'
 
@@ -41,6 +41,7 @@ export function Island() {
   const mode = note ? 'note' : focus ? (expanded ? 'full' : 'compact') : 'hidden'
   const k = focus ? 1 - focus.left / focus.total : 0
   const place = usePlacement(mode)
+  const hover = useTuckAway(mode === 'full', () => setExpanded(false))
 
   return (
     <div
@@ -69,7 +70,7 @@ export function Island() {
         </button>
       )}
       {mode === 'full' && focus && (
-        <div className="island__in island__full" onMouseLeave={() => setExpanded(false)}>
+        <div ref={hover.ref} className="island__in island__full" onMouseEnter={hover.enter} onMouseMove={hover.enter} onMouseLeave={hover.leave}>
           <div className="island__top">
             <MiniRing k={k} size={38} />
             <div className="island__what">
@@ -91,6 +92,43 @@ export function Island() {
       )}
     </div>
   )
+}
+
+/**
+ * When the expanded island folds back: a click outside, Escape, or the mouse leaving it.
+ * Opening moves it (on wide screens it drops from beside the toolbar to below it), so it slides
+ * out from under the pointer; only a leave after a real visit, once it has settled, counts.
+ */
+function useTuckAway(open: boolean, close: () => void) {
+  const ref = useRef<HTMLDivElement>(null)
+  const settled = useRef(false)
+  const visited = useRef(false)
+  const timer = useRef(0)
+  const shut = useRef(close)
+  shut.current = close
+
+  useEffect(() => {
+    if (!open) return
+    settled.current = false
+    visited.current = false
+    const t = window.setTimeout(() => { settled.current = true }, 650)
+    const onDown = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) shut.current() }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') shut.current() }
+    document.addEventListener('pointerdown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      window.clearTimeout(t)
+      window.clearTimeout(timer.current)
+      document.removeEventListener('pointerdown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  return {
+    ref,
+    enter: () => { window.clearTimeout(timer.current); if (settled.current) visited.current = true },
+    leave: () => { if (visited.current) timer.current = window.setTimeout(() => shut.current(), 500) },
+  }
 }
 
 /**

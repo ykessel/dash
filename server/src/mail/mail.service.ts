@@ -18,19 +18,19 @@ export class MailService {
   constructor(@Inject(MAILER) private readonly mailer: Mailer) {}
 
   sendVerifyEmail(to: string, link: string) {
-    return this.send(to, 'Confirm your email for Pane', 'Confirm your email address to finish setting up Pane.', 'Confirm email', link, 'This link works for 24 hours.')
+    return this.send(to, 'Confirm your email for DashApp', 'Confirm your email address to finish setting up DashApp.', 'Confirm email', link, 'This link works for 24 hours.')
   }
 
   sendPasswordReset(to: string, link: string) {
-    return this.send(to, 'Reset your Pane password', 'Someone asked to reset the password for this account. If it was you, choose a new one.', 'Choose a new password', link, 'This link works for 30 minutes. If you didn’t ask for it, ignore this email.')
+    return this.send(to, 'Reset your DashApp password', 'Someone asked to reset the password for this account. If it was you, choose a new one.', 'Choose a new password', link, 'This link works for 30 minutes. If you didn’t ask for it, ignore this email.')
   }
 
   sendMagicLink(to: string, link: string) {
-    return this.send(to, 'Your Pane sign-in link', 'Use this link to sign in to Pane.', 'Sign in', link, 'This link works for 15 minutes and only once.')
+    return this.send(to, 'Your DashApp sign-in link', 'Use this link to sign in to DashApp.', 'Sign in', link, 'This link works for 15 minutes and only once.')
   }
 
   sendInvite(to: string, workspaceName: string, inviterName: string, link: string) {
-    return this.send(to, `${inviterName} invited you to ${workspaceName} on Pane`, `${inviterName} invited you to join ${workspaceName} on Pane.`, `Join ${workspaceName}`, link, 'This invite works for 7 days.')
+    return this.send(to, `${inviterName} invited you to ${workspaceName} on DashApp`, `${inviterName} invited you to join ${workspaceName} on DashApp.`, `Join ${workspaceName}`, link, 'This invite works for 7 days.')
   }
 
   sendDigest(to: string, workspaceName: string, d: Digest) {
@@ -43,8 +43,8 @@ export class MailService {
     return this.mailer.send({
       to,
       subject: `Your day in ${workspaceName}`,
-      text: `Here’s your day in ${workspaceName}.\n\n${lines.join('\n')}\n\nOpen Pane: ${d.link}`,
-      html: `<p>Here’s your day in ${esc(workspaceName)}.</p><ul>${lines.map(l => `<li>${esc(l)}</li>`).join('')}</ul><p><a href="${esc(d.link)}">Open Pane</a></p>`,
+      text: `Here’s your day in ${workspaceName}.\n\n${lines.join('\n')}\n\nOpen DashApp: ${d.link}`,
+      html: `<p>Here’s your day in ${esc(workspaceName)}.</p><ul>${lines.map(l => `<li>${esc(l)}</li>`).join('')}</ul><p><a href="${esc(d.link)}">Open DashApp</a></p>`,
     })
   }
 

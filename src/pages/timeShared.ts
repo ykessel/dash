@@ -29,3 +29,8 @@ export const hm = (m: number) => (m ? formatMinutes(m) : '')
 /** Same rule as the server: once approval is off, old rows lock nothing. */
 export const locked = (p: Project, periods: TimePeriod[], user: string, day: string) =>
   p.approvalEnabled && periods.some(x => x.project === p.id && x.user === user && x.status !== 'rejected' && x.start <= day && x.end >= day)
+
+/** A full day's work; day bars fill up to it. */
+export const FULL_DAY = 8 * 60
+/** Five full days. */
+export const WEEK_TARGET = 5 * FULL_DAY

@@ -22,6 +22,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@v1
-      - run: flyctl deploy --config fly.toml --remote-only
+      # DEMO_EMAIL / DEMO_PASSWORD (repo variables) prefill the sign-in form; leave them unset for a normal login.
+      - run: >-
+          flyctl deploy --config fly.toml --remote-only
+          --build-arg VITE_DEMO_EMAIL="$DEMO_EMAIL"
+          --build-arg VITE_DEMO_PASSWORD="$DEMO_PASSWORD"
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          DEMO_EMAIL: ${{ vars.DEMO_EMAIL }}
+          DEMO_PASSWORD: ${{ vars.DEMO_PASSWORD }}

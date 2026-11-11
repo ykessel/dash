@@ -40,7 +40,7 @@ export function AuthShowcase() {
   return (
     <aside
       className="auth-show"
-      aria-label="About Pane"
+      aria-label="About DashApp"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}

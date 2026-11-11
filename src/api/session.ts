@@ -11,7 +11,7 @@ export function toAuthResult(e: unknown): Extract<AuthResult, { ok: false }> {
     const field = (FORM_FIELDS as readonly string[]).includes(e.field ?? '') ? (e.field as (typeof FORM_FIELDS)[number]) : 'email'
     return { ok: false, field, error: e.message }
   }
-  return { ok: false, field: 'email', error: 'Can’t reach Pane. Check your connection.' }
+  return { ok: false, field: 'email', error: 'Can’t reach DashApp. Check your connection.' }
 }
 
 /** The workspace to open: the last one if I still belong to it, else my first, else none. */

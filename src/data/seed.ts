@@ -33,7 +33,7 @@ const projects: Omit<Project, 'roles' | 'defaultRole' | 'approvalEnabled' | 'app
   },
   {
     id: 'facet', name: 'Facet design system', hue: 'pink', icon: 'grid', status: 'progress',
-    desc: 'One set of tokens, components and docs for every Pane surface, light and dark.',
+    desc: 'One set of tokens, components and docs for every DashApp surface, light and dark.',
     start: offset(-60), due: offset(60), lead: 'nia', members: ['nia', 'elise', 'haruto', 'freya'], pinned: false, starred: false,
     milestones: [
       { id: 'm1', title: 'Tokens v1 locked', due: offset(-20), done: true },

@@ -63,19 +63,21 @@ function TodayRings() {
     { v: Math.min(1, f / goal), c: 'var(--ring-focus)' },
     { v: m.total ? m.done / m.total : 0, c: 'var(--ring-meet)' },
   ]
+  const left = (n: number, unit: string) => (n > 0 ? `${n} ${unit}${n === 1 ? '' : 's'} left` : 'Closed')
+  const focusLeft = Math.max(0, goal - f)
   return (
     <section className="card glass rise" style={{ ['--i' as string]: 0 }}>
       <div className="card__head"><div><h2>Today</h2><p>Close your rings</p></div></div>
       <div className="rings">
         <div className="rings__art">
           {rings.map((r, i) => (
-            <Ring key={i} value={r.v} size={124 - i * 34} stroke={13} color={r.c} track={`color-mix(in srgb, ${r.c} 22%, transparent)`} delay={i * 120} />
+            <Ring key={i} value={r.v} size={160 - i * 42} stroke={17} color={r.c} track={`color-mix(in srgb, ${r.c} 22%, transparent)`} delay={i * 120} />
           ))}
         </div>
         <ul className="rings__legend">
-          <li style={{ ['--c' as string]: 'var(--ring-tasks)' }}><small>Tasks</small><b><CountUp value={t.done} /><i> / {t.total}</i></b></li>
-          <li style={{ ['--c' as string]: 'var(--ring-focus)' }}><small>Focus</small><b><CountUp value={f} decimals={1} />h<i> / {goal}h</i></b></li>
-          <li style={{ ['--c' as string]: 'var(--ring-meet)' }}><small>Meetings</small><b><CountUp value={m.done} /><i> / {m.total}</i></b></li>
+          <li style={{ ['--c' as string]: 'var(--ring-tasks)' }}><small>Tasks</small><b><CountUp value={t.done} /><i> / {t.total}</i></b><em>{t.total ? left(t.total - t.done, 'task') : 'Nothing due'}</em></li>
+          <li style={{ ['--c' as string]: 'var(--ring-focus)' }}><small>Focus</small><b><CountUp value={f} decimals={1} />h<i> / {goal}h</i></b><em>{focusLeft > 0 ? `${focusLeft.toFixed(1)}h to go` : 'Closed'}</em></li>
+          <li style={{ ['--c' as string]: 'var(--ring-meet)' }}><small>Meetings</small><b><CountUp value={m.done} /><i> / {m.total}</i></b><em>{m.total ? left(m.total - m.done, 'meeting') : 'Free day'}</em></li>
         </ul>
       </div>
     </section>

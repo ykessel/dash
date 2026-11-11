@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { type PointerEvent, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Theme } from '../data/types'
 import { ago } from '../lib/date'
 import { go, type Route, type RouteName } from '../lib/router'
@@ -152,12 +152,19 @@ export function Sidebar({ route }: { route: Route }) {
   const open = data.tasks.filter(t => t.assignee === me.id && t.status !== 'done').length
   const pinned = data.projects.filter(p => p.pinned)
   const compact = useSideCompact()
+  const peek = usePeek(compact, menu)
 
   return (
-    <aside className="side glass glass--chrome" aria-label="Workspace">
-      <a className="brand" href="#/home" aria-label="Pane — home">
+    <aside className={`side glass glass--chrome ${peek.open ? 'is-peek' : ''}`} aria-label="Workspace"
+      onPointerEnter={peek.enter} onPointerLeave={peek.leave}>
+      <button type="button" className="side__handle" onClick={() => { peek.close(); toggleSide() }} aria-pressed={compact}
+        aria-label={compact ? 'Expand sidebar' : 'Collapse sidebar'} data-tip={compact ? 'Expand sidebar  [' : 'Collapse sidebar  ['}
+        title={compact ? undefined : 'Collapse sidebar  ['}>
+        <Icon name="left" />
+      </button>
+      <a className="brand" href="#/home" aria-label="DashApp — home">
         <span className="brand__mark"><BrandMark /></span>
-        <span className="brand__name">Pane</span>
+        <span className="brand__name">DashApp</span>
       </a>
       <nav aria-label="Main">
         <div className="nav" ref={navRef}>
@@ -177,17 +184,12 @@ export function Sidebar({ route }: { route: Route }) {
           <ul className="pinned">
             {pinned.map(p => (
               <li key={p.id}>
-                <a href={`#/projects/${p.id}`} data-hue={p.hue} className={route.param === p.id ? 'is-active' : ''}><span>{p.name}</span></a>
+                <a href={`#/projects/${p.id}`} data-hue={p.hue} data-tip={p.name} aria-label={p.name} className={route.param === p.id ? 'is-active' : ''}><span>{p.name}</span></a>
               </li>
             ))}
           </ul>
         </>
       )}
-      <button type="button" className="side__toggle" onClick={toggleSide} aria-pressed={compact}
-        aria-label={compact ? 'Expand sidebar' : 'Collapse sidebar'} data-tip={compact ? 'Expand sidebar  [' : 'Collapse sidebar  ['}>
-        <Icon name={compact ? 'right' : 'left'} />
-        <span>Collapse</span>
-      </button>
       <button ref={meRef} type="button" className="side__me" data-tip={me.name} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(m => !m)}>
         <Avatar p={me} size={36} />
         <span className="side__me-text"><b>{me.name}</b><small>{me.role}</small></span>
@@ -274,4 +276,28 @@ export function TabBar({ route }: { route: Route }) {
       )}
     </nav>
   )
+}
+
+/**
+ * The compact sidebar opens over the page while a mouse rests on it, and folds back when it leaves.
+ * Wide screens only (medium screens are icon-only by design), and never while its menu is open.
+ */
+function usePeek(compact: boolean, holding: boolean) {
+  const [open, setOpen] = useState(false)
+  const timer = useRef(0)
+  const over = useRef(false)
+  const wide = () => matchMedia('(min-width: 1181px)').matches
+  const later = (v: boolean, ms: number) => { window.clearTimeout(timer.current); timer.current = window.setTimeout(() => setOpen(v), ms) }
+
+  useEffect(() => { if (!compact) { window.clearTimeout(timer.current); setOpen(false) } }, [compact])
+  useEffect(() => () => window.clearTimeout(timer.current), [])
+  // The account menu kept it open; once that closes away from the bar, fold it.
+  useEffect(() => { if (!holding && !over.current) later(false, 200) }, [holding]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  return {
+    open: compact && open,
+    enter: (e: PointerEvent) => { over.current = true; if (compact && e.pointerType === 'mouse' && wide()) later(true, 350) },
+    leave: () => { over.current = false; if (!holding) later(false, 200) },
+    close: () => { window.clearTimeout(timer.current); setOpen(false) },
+  }
 }
