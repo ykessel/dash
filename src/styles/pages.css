@@ -596,7 +596,7 @@ html.is-card-dragging, html.is-card-dragging * { cursor: grabbing !important; us
 .page-head--with-back .head__back { flex: none; }
 .page-head--with-back .head__icon { margin-bottom: 6px; }
 .page-head--with-back p { max-width: 640px; }
-.pd { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: var(--gap); align-items: start; }
+.pd { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: var(--gap); align-items: start; }
 .pd__col { display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
 .ov__lead { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-weight: 600; color: var(--accent-ink); }
 .ov__lead:hover span { text-decoration: underline; text-underline-offset: 3px; }
@@ -613,7 +613,7 @@ html.is-card-dragging, html.is-card-dragging * { cursor: grabbing !important; us
 .tline__ends span { display: grid; }
 .tline__ends span + span { text-align: right; }
 .tline__ends small { font-size: 12px; font-weight: 600; color: var(--text-2); }
-.ov__h { display: flex; align-items: center; gap: 8px; margin: 20px 0 8px; font-family: var(--font-display); font-size: 15px; font-weight: 650; line-height: 1.2; }
+.pd-people .card__head h2 { display: flex; align-items: center; gap: 8px; }
 .ov__people { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr)); gap: 2px 8px; }
 .ov__person { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; padding: 7px 6px; border-radius: 14px; text-align: left; transition: background-color 0.2s; }
 .ov__person:hover { background: var(--fill-hover); }
@@ -682,7 +682,7 @@ html.is-card-dragging, html.is-card-dragging * { cursor: grabbing !important; us
 .prow__due.is-late { color: var(--danger); font-weight: 600; }
 
 @media (max-width: 1240px) {
-  .pd { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); }
+  .pd { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
 }
 @media (max-width: 980px) {
   .pd { grid-template-columns: minmax(0, 1fr); }
@@ -691,7 +691,9 @@ html.is-card-dragging, html.is-card-dragging * { cursor: grabbing !important; us
   .pd-ms { order: 2; }
   .pd-burn { order: 3; }
   .pd-tasks { order: 4; }
-  .pd-up { order: 5; }
+  .pd-people { order: 5; }
+  .pd-up { order: 6; }
+  .pd-approval { order: 7; }
 }
 @media (max-width: 760px) {
   .page-head--with-back { flex-direction: column; align-items: flex-start; gap: 10px; }
