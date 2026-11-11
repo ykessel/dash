@@ -1,7 +1,7 @@
-# Pane — demo de workspace en "liquid glass"
+# DashApp — demo de workspace en "liquid glass"
 
 Proyecto demo hecho desde cero con **React 19 + Vite + TypeScript**, inspirado en el diseño de
-[Pane](https://demo.codeandchill.store/pane/): un espacio de trabajo para equipos pequeños con
+[DashApp](https://demo.codeandchill.store/pane/): un espacio de trabajo para equipos pequeños con
 superficies de vidrio, modo claro y oscuro, fondos intercambiables y animaciones con resorte.
 
 El código, los iconos, las ilustraciones de avatares y los datos son propios. No se copió el código,

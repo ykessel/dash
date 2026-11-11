@@ -4,13 +4,26 @@
 //   cd server && set -a && . ./.env && set +a && node scripts/demo-seed.mjs [owner-email]
 //
 // Re-running replaces the previous demo data: demo people use @demo.pane.test, and demo projects,
-// events and focus sessions are recognised by their names. It refuses to touch any database that isn't on localhost.
+// events and focus sessions are recognised by their names. It refuses to touch any database that isn't on localhost
+// unless --remote is passed, for the hosted demo:
+//
+//   DATABASE_URL=<neon direct url> pnpm demo:seed --remote demo@example.com --password <pw> [--name "Ana Demo"]
+//
+// With --password the owner needs no sign-up: the account is created (or its password reset) already verified,
+// with a workspace of its own, so no email ever has to go out.
 import pg from 'pg'
+import { hash, argon2id } from 'argon2'
+import { DEFAULT_ROLES } from '../src/access/permissions.ts'
 
-const OWNER = process.argv[2] ?? 'ana.p6@pane.test'
+const args = process.argv.slice(2)
+const flag = name => { const i = args.indexOf(name); return i < 0 ? undefined : args.splice(i, 2)[1] }
+const PASSWORD = flag('--password')
+const NAME = flag('--name') ?? 'Demo Owner'
+const REMOTE = args.includes('--remote')
+const OWNER = (args.find(a => !a.startsWith('--')) ?? 'ana.p6@pane.test').trim().toLowerCase()
 const url = new URL(process.env.DATABASE_URL ?? '')
-if (!['localhost', '127.0.0.1', '::1'].includes(url.hostname) || process.env.NODE_ENV === 'production') {
-  console.error(`Refusing to seed ${url.hostname}: demo data is for local databases only.`)
+if (!REMOTE && (!['localhost', '127.0.0.1', '::1'].includes(url.hostname) || process.env.NODE_ENV === 'production')) {
+  console.error(`Refusing to seed ${url.hostname}: demo data is for local databases only. Pass --remote for the hosted demo.`)
   process.exit(1)
 }
 
@@ -79,9 +92,22 @@ const q = (sql, params) => db.query(sql, params).then(r => r.rows)
 
 try {
   await db.query('BEGIN')
-  const [owner] = await q(`SELECT id FROM users WHERE email = $1`, [OWNER])
-  if (!owner) throw new Error(`No user ${OWNER}. Sign in once locally first.`)
-  const [ws] = await q(`SELECT m.workspace_id AS id FROM memberships m WHERE m.user_id = $1 AND m.role = 'owner' ORDER BY m.joined_at LIMIT 1`, [owner.id])
+  let [owner] = await q(`SELECT id FROM users WHERE email = $1`, [OWNER])
+  if (PASSWORD) {
+    if (PASSWORD.length < 8) throw new Error('--password needs at least 8 characters.')
+    const passwordHash = await hash(PASSWORD, { type: argon2id })
+    ;[owner] = owner
+      ? await q(`UPDATE users SET password_hash = $2, email_verified_at = coalesce(email_verified_at, now()) WHERE id = $1 RETURNING id`, [owner.id, passwordHash])
+      : await q(`INSERT INTO users (email, email_verified_at, name, password_hash, avatar_skin) VALUES ($1, now(), $2, $3, 0) RETURNING id`, [OWNER, NAME, passwordHash])
+  }
+  if (!owner) throw new Error(`No user ${OWNER}. Sign in once first, or pass --password to create it.`)
+  let [ws] = await q(`SELECT m.workspace_id AS id FROM memberships m WHERE m.user_id = $1 AND m.role = 'owner' ORDER BY m.joined_at LIMIT 1`, [owner.id])
+  if (!ws && PASSWORD) {
+    // What POST /workspaces does: the workspace, its owner, and the three built-in project roles.
+    ;[ws] = await q(`INSERT INTO workspaces (name, slug, created_by) VALUES ('Demo workspace', 'demo-' || substr(md5(random()::text), 1, 6), $1) RETURNING id`, [owner.id])
+    await q(`INSERT INTO memberships (workspace_id, user_id, role, team, title) VALUES ($1, $2, 'owner', 'Product', 'Workspace owner')`, [ws.id, owner.id])
+    for (const r of DEFAULT_ROLES) await q(`INSERT INTO project_roles (workspace_id, key, name, permissions) VALUES ($1, $2, $3, $4)`, [ws.id, r.key, r.name, r.permissions])
+  }
   if (!ws) throw new Error(`${OWNER} owns no workspace.`)
   const W = ws.id
   const roles = Object.fromEntries((await q(`SELECT key, id FROM project_roles WHERE workspace_id = $1`, [W])).map(r => [r.key, r.id]))

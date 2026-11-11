@@ -7,7 +7,7 @@ import { go, type Route, type RouteName } from '../lib/router'
 import { rememberInvite, useStore, type AuthResult } from '../store'
 
 /* Sign-in, sign-up, signed-out and link screens, built from the app's glass,
-   gel buttons, fields and motion, talking to the Pane API. */
+   gel buttons, fields and motion, talking to the DashApp API. */
 
 export function AuthPage({ route: r }: { route: Route }) {
   const route = r.name
@@ -40,9 +40,9 @@ function AuthCard({ children, shake }: { children: ReactNode; shake: number }) {
 
 function Brand() {
   return (
-    <a className="auth-brand" href="#/signin" aria-label="Pane">
+    <a className="auth-brand" href="#/signin" aria-label="DashApp">
       <span className="brand__mark"><BrandMark /></span>
-      <span>Pane</span>
+      <span>DashApp</span>
     </a>
   )
 }
@@ -125,10 +125,14 @@ const LINK_ERRORS: Record<string, string> = {
   provider_disabled: 'That sign-in option isn’t set up yet.',
 }
 
+/** The hosted demo bakes one account into the build so visitors only press Sign in. Unset everywhere else. */
+const DEMO_EMAIL = (import.meta.env?.VITE_DEMO_EMAIL as string | undefined) ?? ''
+const DEMO_PASSWORD = (import.meta.env?.VITE_DEMO_PASSWORD as string | undefined) ?? ''
+
 function SignIn({ error }: { error?: string }) {
   const { signIn, signInWith, requestMagicLink, forgotPassword, notify, lastUser } = useStore()
-  const [email, setEmail] = useState(lastUser?.email ?? '')
-  const [password, setPassword] = useState('')
+  const [email, setEmail] = useState(DEMO_EMAIL || lastUser?.email || '')
+  const [password, setPassword] = useState(DEMO_PASSWORD)
   const [remember, setRemember] = useState(true)
   const [err, setErr] = useState<Extract<AuthResult, { ok: false }> | null>(
     error ? { ok: false, field: 'email', error: LINK_ERRORS[error] ?? 'That sign-in didn’t finish. Try again.' } : null,
@@ -207,7 +211,7 @@ function SignIn({ error }: { error?: string }) {
         <button type="button" className="btn btn--glass auth-submit" onClick={magic} disabled={busy}>Email me a sign-in link</button>
       </form>
 
-      <p className="auth-foot">New to Pane? <a className="link" href="#/signup">Create an account</a></p>
+      <p className="auth-foot">New to DashApp? <a className="link" href="#/signup">Create an account</a></p>
     </AuthCard>
   )
 }
@@ -244,7 +248,7 @@ function SignUp() {
     run(async () => {
       const r = await signUp({ name, email, password, team, role })
       if (!r.ok) return fail(r.field, r.error)
-      notify(`Welcome to Pane, ${name.trim().split(' ')[0]}! Check your email to confirm it.`, 'ok')
+      notify(`Welcome to DashApp, ${name.trim().split(' ')[0]}! Check your email to confirm it.`, 'ok')
       go('home')
     })
   }

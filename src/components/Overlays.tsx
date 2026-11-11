@@ -280,7 +280,7 @@ function InviteForm({ onDone }: { onDone: () => void }) {
   }
   return (
     <form className="mform" onSubmit={submit} noValidate>
-      <FormHead title="Invite to Pane" onClose={onDone} submit="Send" />
+      <FormHead title="Invite to DashApp" onClose={onDone} submit="Send" />
       <div className="modal__grid">
         <Field label="Name"><input className="input" autoFocus value={name} onChange={e => { setName(e.target.value); setErr('') }} placeholder="Full name" /></Field>
         <Field label="Email"><input className="input" type="email" value={email} onChange={e => { setEmail(e.target.value); setErr('') }} placeholder="name@company.com" /></Field>

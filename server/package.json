@@ -17,7 +17,7 @@
     "migration:generate": "pnpm typeorm migration:generate",
     "migration:run": "pnpm typeorm migration:run",
     "migration:revert": "pnpm typeorm migration:revert",
-    "demo:seed": "node scripts/demo-seed.mjs"
+    "demo:seed": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/demo-seed.mjs"
   },
   "jest": {
     "moduleFileExtensions": [

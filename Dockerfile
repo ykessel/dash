@@ -12,6 +12,10 @@ COPY server/package.json server/
 RUN pnpm install --frozen-lockfile
 COPY . .
 # No VITE_API_URL: the web app talks to the origin that serves it.
+# The demo account, when given, is baked into the sign-in form (public by design).
+ARG VITE_DEMO_EMAIL=""
+ARG VITE_DEMO_PASSWORD=""
+ENV VITE_DEMO_EMAIL=$VITE_DEMO_EMAIL VITE_DEMO_PASSWORD=$VITE_DEMO_PASSWORD
 RUN pnpm build \
  && pnpm --dir server build \
  && pnpm --filter @pane/server deploy --prod --legacy /out \

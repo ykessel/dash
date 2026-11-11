@@ -1,6 +1,6 @@
 import { type KeyboardEvent, useMemo, useState } from 'react'
 import { Icon } from '../components/Icon'
-import { Avatar, Seg } from '../components/ui'
+import { Avatar, Bar, Popover, Seg, Stat } from '../components/ui'
 import type { Project, TimePeriod, TimesheetData, Worklog } from '../data/types'
 import { short, todayIso } from '../lib/date'
 import { formatMinutes, parseDuration } from '../lib/duration'
@@ -8,7 +8,7 @@ import { addDaysIso, periodStartOf, weekStart } from '../lib/periods'
 import { useStore } from '../store'
 import { TimeCalendar } from './TimeCalendar'
 import { TimeReports } from './TimeReports'
-import { hm, locked, sum, useSheet } from './timeShared'
+import { FULL_DAY, WEEK_TARGET, hm, locked, sum, useSheet } from './timeShared'
 
 type Tab = 'mine' | 'calendar' | 'team' | 'reports'
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -62,18 +62,32 @@ function periodOf(p: Project, user: string, week: string, periods: TimePeriod[])
 
 /* ---------------- My time ---------------- */
 
+type Row = { id: string; title: string; project: string; status: string }
+
+/** Projects whose period holding this week can be sent now and that have hours in it. */
+function sendable(projects: Project[], me: string, week: string, sheet: TimesheetData, today: string) {
+  return projects.flatMap(p => {
+    const { start, row } = periodOf(p, me, week, sheet.periods)
+    const open = p.approvalEnabled && (!row || row.status === 'rejected') && start <= today
+    return open && sheet.worklogs.some(w => w.project === p.id) ? [{ p, start }] : []
+  })
+}
+
 function MyWeek({ week }: { week: string }) {
-  const { data, me, project: projectOf, submitPeriod, withdrawPeriod } = useStore()
+  const { data, me, project: projectOf, submitPeriod, timesheet, notify } = useStore()
   const { sheet, loading } = useSheet(week, addDaysIso(week, 6), 'me')
   const [added, setAdded] = useState<string[]>([])
+  const [busy, setBusy] = useState(false)
   const ds = days(week)
   const today = todayIso()
 
-  const active = data.tasks.filter(t => t.assignee === me.id && (t.status === 'progress' || t.status === 'review'))
+  const loggable = (t: { assignee?: string | null; status: string; id: string }) =>
+    t.assignee === me.id && (t.status === 'progress' || t.status === 'review') && !t.id.startsWith('tmp-')
+  const active = data.tasks.filter(loggable)
   const rows = useMemo(() => {
     const ids = new Set([...sheet.tasks.map(t => t.id), ...added])
     const byId = new Map(sheet.tasks.map(t => [t.id, t]))
-    return [...ids].map(id => {
+    return [...ids].map((id): Row | null => {
       const live = data.tasks.find(t => t.id === id)
       const t = byId.get(id)
       return live ? { id, title: live.title, project: live.project, status: live.status } : t ? { id, title: t.title, project: t.project, status: t.status } : null
@@ -82,80 +96,182 @@ function MyWeek({ week }: { week: string }) {
   const groups = [...new Set(rows.map(r => r.project))]
   const candidates = active.filter(t => !rows.some(r => r.id === t.id))
 
+  const total = sum(sheet.worklogs)
+  const isNow = week === weekStart(today)
+  const todayMin = sum(sheet.worklogs.filter(w => w.date === today))
+  const daysLogged = new Set(sheet.worklogs.map(w => w.date)).size
+  const toSend = sendable(groups.map(projectOf), me.id, week, sheet, today)
+  const pending = sum(sheet.worklogs.filter(w => toSend.some(s => s.p.id === w.project)))
+
+  const submitAll = async () => {
+    setBusy(true)
+    let sent = 0
+    for (const s of toSend) if (await submitPeriod(s.p.id, s.start)) sent++
+    setBusy(false)
+    if (sent) notify(sent === 1 ? `Sent ${toSend[0].p.name} for approval` : `Sent ${sent} projects for approval`)
+  }
+  const copyLast = async () => {
+    setBusy(true)
+    try {
+      const last = await timesheet({ from: addDaysIso(week, -7), to: addDaysIso(week, -1), user: 'me' })
+      const ids = last.tasks.map(t => t.id).filter(id => !rows.some(r => r.id === id) && active.some(t => t.id === id))
+      if (ids.length) {
+        setAdded(a => [...a, ...ids])
+        notify(`Added ${ids.length} task${ids.length === 1 ? '' : 's'} from last week`)
+      } else notify('Nothing from last week to add. Tasks need to be In progress or In review.', 'warn')
+    } catch {
+      notify('Couldn’t load last week.', 'warn')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** Arrow keys move between day cells, like a spreadsheet. */
+  const onGridKey = (e: KeyboardEvent<HTMLTableElement>) => {
+    const from = (e.target as HTMLElement).closest<HTMLElement>('[data-r]')
+    if (!from || (e.target as HTMLElement).tagName === 'INPUT') return
+    const step = ({ ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] } as Record<string, number[]>)[e.key]
+    if (!step) return
+    const to = e.currentTarget.querySelector<HTMLElement>(`[data-r="${Number(from.dataset.r) + step[0]}"][data-c="${Number(from.dataset.c) + step[1]}"]`)
+    if (to) { e.preventDefault(); to.focus() }
+  }
+
+  let r = 0
   return (
-    <section className="card glass rise ts-card" style={{ ['--i' as string]: 0 }}>
-      {groups.length === 0 && !loading && <p className="ts-empty">No hours this week yet. Add a task you’re working on to start logging.</p>}
-      {groups.length > 0 && (
-        <div className="ts-scroll">
-          <table className="ts-grid">
-            <thead>
-              <tr>
-                <th>Task</th>
-                {ds.map((d, i) => <th key={d} className={d === today ? 'is-today' : ''}>{DAYS[i]} <small>{d.slice(8)}</small></th>)}
-                <th>Total</th>
-              </tr>
-            </thead>
-            {groups.map(pid => {
-              const p = projectOf(pid)
-              const mine = rows.filter(r => r.project === pid)
-              const logs = sheet.worklogs.filter(w => w.project === pid)
-              const { start, row } = periodOf(p, me.id, week, sheet.periods)
-              return (
-                <tbody key={pid}>
-                  <tr className="ts-proj">
-                    <th colSpan={9}>
-                      <span className="ts-proj__name"><i className={`dot hue-${p.hue}`} /> {p.name}</span>
-                      <Status p={p} row={row} />
-                      {p.approvalEnabled && (!row || row.status === 'rejected') && start <= today && (
-                        <button className="btn btn--glass btn--sm" onClick={() => submitPeriod(p.id, start)}>Submit for approval</button>
-                      )}
-                      {row?.status === 'submitted' && <button className="btn btn--ghost btn--sm" onClick={() => withdrawPeriod(p.id, row.start)}>Withdraw</button>}
-                    </th>
-                  </tr>
-                  {mine.map(r => {
-                    const own = logs.filter(w => w.task === r.id)
-                    const canLog = r.status === 'progress' || r.status === 'review'
-                    return (
-                      <tr key={r.id}>
-                        <th className="ts-task">{r.title}</th>
-                        {ds.map(d => (
-                          <td key={d} className={d === today ? 'is-today' : ''}>
-                            <Cell task={r.id} day={d} logs={own.filter(w => w.date === d)}
-                              disabled={d > today || locked(p, sheet.periods, me.id, d)} canCreate={canLog} />
-                          </td>
-                        ))}
-                        <td className="ts-total num">{formatMinutes(sum(own))}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              )
-            })}
-            <tfoot>
-              <tr>
-                <th>Total</th>
-                {ds.map(d => <td key={d} className="num">{hm(sum(sheet.worklogs.filter(w => w.date === d)))}</td>)}
-                <td className="ts-total num">{formatMinutes(sum(sheet.worklogs))}</td>
-              </tr>
-            </tfoot>
-          </table>
+    <>
+      <div className="ts-summary rise" style={{ ['--i' as string]: 0 }}>
+        <div className="stats">
+          <div className="stat ts-stat">
+            <small>This week</small>
+            <b>{formatMinutes(total) || '0h'}<i>/ {WEEK_TARGET / 60}h</i></b>
+            <Bar value={total / WEEK_TARGET} />
+          </div>
+          {isNow
+            ? <Stat label="Today">{formatMinutes(todayMin) || '0h'}<i>{todayMin >= FULL_DAY ? 'done' : `${formatMinutes(FULL_DAY - todayMin)} left`}</i></Stat>
+            : <Stat label="Days logged">{daysLogged}<i>/ 5</i></Stat>}
+          <Stat label="To submit">{toSend.length}<i>{toSend.length ? formatMinutes(pending) : 'all sent'}</i></Stat>
         </div>
+        <div className="page-actions">
+          <button className="btn btn--glass" disabled={busy} onClick={() => void copyLast()}><Icon name="layers" /> Copy last week</button>
+          {toSend.length > 0 && <button className="btn btn--primary" disabled={busy} onClick={() => void submitAll()}><Icon name="check" /> Submit week</button>}
+        </div>
+      </div>
+
+      <section className="card glass rise ts-card" style={{ ['--i' as string]: 1 }}>
+        {groups.length === 0 && !loading && <p className="ts-empty">No hours this week yet. Add a task you’re working on, or copy last week’s.</p>}
+        {(groups.length > 0 || candidates.length > 0) && (
+          <div className="ts-scroll">
+            <table className="ts-grid ts-grid--mine" onKeyDown={onGridKey}>
+              {groups.length > 0 && (
+                <thead>
+                  <tr>
+                    <th className="ts-head-task">Task</th>
+                    {ds.map((d, i) => <th key={d} className={dayCls(d, i, today)}>{DAYS[i]} <small>{d.slice(8)}</small></th>)}
+                    <th className="ts-total">Total</th>
+                  </tr>
+                </thead>
+              )}
+              {groups.map(pid => {
+                const p = projectOf(pid)
+                const mine = rows.filter(x => x.project === pid)
+                const logs = sheet.worklogs.filter(w => w.project === pid)
+                const { start, row } = periodOf(p, me.id, week, sheet.periods)
+                return (
+                  <tbody key={pid}>
+                    <tr className="ts-proj" data-hue={p.hue}>
+                      <th colSpan={8}>
+                        <span className="ts-proj__name">{p.name}</span>
+                        <StatusMenu p={p} row={row} start={start} canSubmit={start <= today && logs.length > 0} />
+                      </th>
+                      <th className="ts-total ts-proj__sum">{hm(sum(logs))}</th>
+                    </tr>
+                    {mine.map(x => {
+                      const own = logs.filter(w => w.task === x.id)
+                      const canLog = x.status === 'progress' || x.status === 'review'
+                      const ri = r++
+                      return (
+                        <tr key={x.id}>
+                          <th className="ts-task" title={x.title}>{x.title}</th>
+                          {ds.map((d, i) => (
+                            <td key={d} className={dayCls(d, i, today)}>
+                              <Cell task={x.id} day={d} logs={own.filter(w => w.date === d)} pos={[ri, i]}
+                                disabled={d > today || locked(p, sheet.periods, me.id, d)} canCreate={canLog} />
+                            </td>
+                          ))}
+                          <td className="ts-total num">{formatMinutes(sum(own))}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                )
+              })}
+              {candidates.length > 0 && (
+                <tbody>
+                  <tr className="ts-addrow">
+                    <td colSpan={9}>
+                      <label className="ts-add">
+                        <Icon name="plus" size={16} />
+                        <select className="input" value="" aria-label="Add a task to this week" onChange={e => { if (e.target.value) setAdded(a => [...a, e.target.value]) }}>
+                          <option value="">Add a task to this week…</option>
+                          {candidates.map(t => <option key={t.id} value={t.id}>{t.title} · {projectOf(t.project).name}</option>)}
+                        </select>
+                      </label>
+                    </td>
+                  </tr>
+                </tbody>
+              )}
+              {groups.length > 0 && (
+                <tfoot>
+                  <tr>
+                    <th>Total</th>
+                    {ds.map((d, i) => {
+                      const m = sum(sheet.worklogs.filter(w => w.date === d))
+                      return (
+                        <td key={d} className={`num ${dayCls(d, i, today)}`}>
+                          {hm(m) || '–'}
+                          {i < 5 && <i className="tc-bar ts-daybar"><i style={{ width: `${Math.min(1, m / FULL_DAY) * 100}%` }} className={m > FULL_DAY ? 'is-over' : ''} /></i>}
+                        </td>
+                      )
+                    })}
+                    <td className="ts-total num">{formatMinutes(total)}</td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        )}
+      </section>
+    </>
+  )
+}
+
+const dayCls = (d: string, i: number, today: string) => [d === today && 'is-today', i >= 5 && 'is-we'].filter(Boolean).join(' ')
+
+/** The period's state; when there's something to do with it, the chip opens a small menu. */
+function StatusMenu({ p, row, start, canSubmit }: { p: Project; row: TimePeriod | undefined; start: string; canSubmit: boolean }) {
+  const { submitPeriod, withdrawPeriod } = useStore()
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null)
+  const submit = p.approvalEnabled && (!row || row.status === 'rejected') && canSubmit
+  const withdraw = row?.status === 'submitted'
+  if (!submit && !withdraw) return <Status p={p} row={row} />
+  const close = () => setAnchor(null)
+  return (
+    <>
+      <button className="ts-chipbtn" aria-haspopup="menu" aria-expanded={!!anchor} onClick={e => setAnchor(anchor ? null : e.currentTarget)}>
+        <Status p={p} row={row} /><Icon name="down" size={14} />
+      </button>
+      {anchor && (
+        <Popover anchor={anchor} onClose={close} align="left">
+          {submit && <button className="menu__item" onClick={() => { close(); void submitPeriod(p.id, start) }}>Submit {p.name} for approval <Icon name="check" /></button>}
+          {withdraw && <button className="menu__item" onClick={() => { close(); void withdrawPeriod(p.id, row.start) }}>Withdraw submission <Icon name="left" /></button>}
+        </Popover>
       )}
-      {candidates.length > 0 && (
-        <label className="ts-add">
-          <Icon name="plus" size={16} />
-          <select className="input" value="" aria-label="Add a task to this week" onChange={e => { if (e.target.value) setAdded(a => [...a, e.target.value]) }}>
-            <option value="">Add a task to this week…</option>
-            {candidates.map(t => <option key={t.id} value={t.id}>{t.title} · {projectOf(t.project).name}</option>)}
-          </select>
-        </label>
-      )}
-    </section>
+    </>
   )
 }
 
 function Status({ p, row }: { p: Project; row: TimePeriod | undefined }) {
-  if (!p.approvalEnabled && !row) return <span className="ts-chip">No approval</span>
+  if (!p.approvalEnabled && !row) return <span className="ts-chip is-quiet">No approval</span>
   if (!row) return <span className="ts-chip">Open · {p.approvalPeriod === 'week' ? 'weekly' : 'monthly'}</span>
   if (row.status === 'submitted') return <span className="ts-chip is-sub">Submitted</span>
   if (row.status === 'approved') return <span className="ts-chip is-ok"><Icon name="shield" size={12} /> Approved</span>
@@ -164,28 +280,46 @@ function Status({ p, row }: { p: Project; row: TimePeriod | undefined }) {
 
 /**
  * One day of one task. 0 or 1 worklogs: edit inline (empty deletes, a new value creates).
- * Several: show them, read-only here; they're edited on the task.
+ * Several: a menu lists them, and they're edited on the task.
  */
-function Cell({ task, day, logs, disabled, canCreate }: { task: string; day: string; logs: Worklog[]; disabled: boolean; canCreate: boolean }) {
+function Cell({ task, day, logs, disabled, canCreate, pos }: { task: string; day: string; logs: Worklog[]; disabled: boolean; canCreate: boolean; pos: [number, number] }) {
   const { logWork, editWorklog, deleteWorklog, openDrawer } = useStore()
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState('')
   const [bad, setBad] = useState(false)
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null)
   const total = sum(logs)
   const label = total ? formatMinutes(total) : ''
+  const at = { 'data-r': pos[0], 'data-c': pos[1] }
 
   if (logs.length > 1) {
     return (
-      <button className="ts-cell is-multi" title={logs.map(w => `${formatMinutes(w.minutes)}${w.comment ? ` — ${w.comment}` : ''}`).join('\n')}
-        onClick={() => openDrawer({ kind: 'task', id: task })}>
-        {label}<small>×{logs.length}</small>
-      </button>
+      <>
+        <button {...at} className="ts-cell is-multi" aria-haspopup="menu" aria-label={`${label} in ${logs.length} entries on ${day}`}
+          onClick={e => setAnchor(anchor ? null : e.currentTarget)}>
+          {label}<small>{logs.length}</small>
+        </button>
+        {anchor && (
+          <Popover anchor={anchor} onClose={() => setAnchor(null)} align="left" className="ts-entries">
+            {logs.map(w => (
+              <div key={w.id} className="ts-entry">
+                <b className="num">{formatMinutes(w.minutes)}</b>
+                <span>{w.comment || 'No comment'}</span>
+              </div>
+            ))}
+            <div className="menu__sep" />
+            <button className="menu__item" onClick={() => { setAnchor(null); openDrawer({ kind: 'task', id: task }) }}>Edit on the task <Icon name="right" /></button>
+          </Popover>
+        )}
+      </>
     )
   }
   const one = logs[0]
-  if (disabled || (!one && !canCreate)) return <span className={`ts-cell is-off ${disabled ? 'is-locked' : ''}`}>{label}</span>
+  if (disabled || (!one && !canCreate)) {
+    return <span {...at} tabIndex={-1} className={`ts-cell is-off ${disabled ? 'is-locked' : ''}`} title={disabled && day <= todayIso() ? 'Locked: this period was submitted or approved' : undefined}>{label}</span>
+  }
   if (!editing) {
-    return <button className="ts-cell" aria-label={`${label || 'Log time'} on ${day}`} onClick={() => { setText(label); setBad(false); setEditing(true) }}>{label}</button>
+    return <button {...at} className={`ts-cell ${label ? '' : 'is-empty'}`} aria-label={`${label || 'Log time'} on ${day}`} onClick={() => { setText(label); setBad(false); setEditing(true) }}>{label}</button>
   }
 
   const save = async () => {
@@ -206,7 +340,7 @@ function Cell({ task, day, logs, disabled, canCreate }: { task: string; day: str
     if (e.key === 'Escape') setEditing(false)
   }
   return (
-    <input className="input ts-input" autoFocus value={text} placeholder="2h" aria-label={`Time on ${day}`} aria-invalid={bad}
+    <input {...at} className="input ts-input" autoFocus value={text} placeholder="2h" aria-label={`Time on ${day}`} aria-invalid={bad}
       title={bad ? 'Use a time like 2h 30m, 1.5h or 90m.' : undefined}
       onChange={e => { setText(e.target.value); setBad(false) }} onKeyDown={onKey} onBlur={() => void save()} />
   )
@@ -243,7 +377,7 @@ function TeamProject({ p, week, sheet, i }: { p: Project; week: string; sheet: T
 
   return (
     <section className="card glass rise ts-card" style={{ ['--i' as string]: i }}>
-      <div className="card__head"><div><h2><i className={`dot hue-${p.hue}`} /> {p.name}</h2><p>{p.approvalEnabled ? `Approval ${p.approvalPeriod === 'week' ? 'weekly' : 'monthly'}` : 'No approval'}</p></div></div>
+      <div className="card__head"><div><h2><i className="dot" data-hue={p.hue} /> {p.name}</h2><p>{p.approvalEnabled ? `Approval ${p.approvalPeriod === 'week' ? 'weekly' : 'monthly'}` : 'No approval'}</p></div></div>
       {people.length === 0 ? <p className="ts-empty">No hours this week.</p> : (
         <div className="ts-scroll">
           <table className="ts-grid">

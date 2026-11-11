@@ -4,11 +4,9 @@ import { MONTHS_LONG, todayIso } from '../lib/date'
 import { formatMinutes, parseDuration } from '../lib/duration'
 import { addDaysIso, monthStart, periodEndOf, weekStart } from '../lib/periods'
 import { useStore } from '../store'
-import { hm, locked, sum, useSheet } from './timeShared'
+import { FULL_DAY, hm, locked, sum, useSheet } from './timeShared'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-/** A full day's work; the bar under each day fills up to it. */
-const FULL_DAY = 8 * 60
 
 const shiftMonth = (start: string, n: number) => {
   const d = new Date(`${start}T00:00:00Z`)
@@ -112,7 +110,7 @@ function DayPanel({ day, sheet }: { day: string; sheet: ReturnType<typeof useShe
             const del = can(w.project, 'time.delete_own') && !locked(p, sheet.periods, me.id, w.date)
             return (
               <li key={w.id} className="lw__item tc-log">
-                <i className={`dot hue-${p.hue}`} />
+                <i className="dot" data-hue={p.hue} />
                 <div>
                   <button className="tc-task" onClick={() => openDrawer({ kind: 'task', id: w.task })}>{title(w.task)}</button>
                   <small> · {p.name}</small>

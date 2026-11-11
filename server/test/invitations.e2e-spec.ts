@@ -27,7 +27,7 @@ describe('invitations', () => {
     const created = await invite(lin.auth, { email: 'Nia@Pane.app ', team: 'Design', title: 'Design Lead' }).expect(201)
     expect(created.body).toMatchObject({ email: 'nia@pane.app', role: 'member', team: 'Design', title: 'Design Lead', expiresAt: expect.any(String) })
     const mail = t.mailer.lastTo('nia@pane.app')!
-    expect(mail.subject).toBe('lin invited you to Pane Studio on Pane')
+    expect(mail.subject).toBe('lin invited you to Pane Studio on DashApp')
     expect(mail.text).toContain('http://localhost:5173/#/invite?token=')
     const token = t.mailer.tokenFor('nia@pane.app')
 

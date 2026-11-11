@@ -82,7 +82,7 @@ export function Settings() {
     <>
       <header className="page-head">
         <h1>Settings</h1>
-        <p>Your profile, the look of Pane, and when it nudges you</p>
+        <p>Your profile, the look of DashApp, and when it nudges you</p>
       </header>
 
       <div className="set-layout">
@@ -118,7 +118,7 @@ export function Settings() {
           </section>
 
           <section id="set-notifications" className="card glass rise" style={{ ['--i' as string]: i++ }}>
-            <div className="card__head"><div><h2>Notifications</h2><p>What Pane taps you on the shoulder for</p></div></div>
+            <div className="card__head"><div><h2>Notifications</h2><p>What DashApp taps you on the shoulder for</p></div></div>
             <ul className="set-rows">
               {notifRows.map(r => (
                 <li key={r.k}>
@@ -192,7 +192,7 @@ export function Settings() {
           {manager && <RolesSettings index={i++} />}
 
           <section id="set-data" className="card glass rise" style={{ ['--i' as string]: i++ }}>
-            <div className="card__head"><div><h2>Data &amp; export</h2><p>Your team’s data lives in Pane. Take a copy any time.</p></div></div>
+            <div className="card__head"><div><h2>Data &amp; export</h2><p>Your team’s data lives in DashApp. Take a copy any time.</p></div></div>
             <ul className="set-rows">
               <li>
                 <div><b>Tasks</b><small>{data.tasks.length} tasks · one row each · CSV</small></div>

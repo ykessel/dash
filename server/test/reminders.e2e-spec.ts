@@ -160,7 +160,7 @@ describe('digest', () => {
   afterAll(() => t.app.close())
 
   const tick = () => t.app.get(RemindersService).tick()
-  const digests = () => t.mailer.sent.filter(m => m.subject === 'Your day in Pane')
+  const digests = () => t.mailer.sent.filter(m => m.subject === 'Your day in DashApp')
   const optIn = () => t.http.patch('/api/v1/me/prefs').set(nia.auth).send({ notify: { digest: true } }).expect(200)
   /** nia's task (assigning her leaves one unread notice), then the clock moves to her 09:01 and it falls due today, with a 10:00 meeting. */
   const busyMorning = async () => {

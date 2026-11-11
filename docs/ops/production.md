@@ -1,6 +1,6 @@
-# Running Pane in production
+# Running DashApp in production
 
-Pane ships as **one container image** (`Dockerfile`):
+DashApp ships as **one container image** (`Dockerfile`):
 - The NestJS API is served under `/api/v1` and the Socket.IO namespace `/realtime`.
 - The built web app is served at `/`.
 
