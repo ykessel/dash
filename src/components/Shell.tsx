@@ -162,9 +162,9 @@ export function Sidebar({ route }: { route: Route }) {
         title={compact ? undefined : 'Collapse sidebar  ['}>
         <Icon name="left" />
       </button>
-      <a className="brand" href="#/home" aria-label="Pane — home">
+      <a className="brand" href="#/home" aria-label="DashApp — home">
         <span className="brand__mark"><BrandMark /></span>
-        <span className="brand__name">Pane</span>
+        <span className="brand__name">DashApp</span>
       </a>
       <nav aria-label="Main">
         <div className="nav" ref={navRef}>

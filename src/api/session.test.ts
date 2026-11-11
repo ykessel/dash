@@ -14,7 +14,7 @@ describe('toAuthResult', () => {
   })
 
   it('a network failure says so', () => {
-    expect(toAuthResult(new TypeError('Failed to fetch'))).toEqual({ ok: false, field: 'email', error: 'Can’t reach Pane. Check your connection.' })
+    expect(toAuthResult(new TypeError('Failed to fetch'))).toEqual({ ok: false, field: 'email', error: 'Can’t reach DashApp. Check your connection.' })
   })
 })
 

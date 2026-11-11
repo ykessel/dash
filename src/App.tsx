@@ -42,7 +42,7 @@ export function App() {
 
   useEffect(() => {
     const t: Partial<Record<RouteName, string>> = { signin: 'Sign in', signup: 'Create account', signedout: 'Signed out', auth: 'Signing in', invite: 'Invite' }
-    document.title = `${t[route.name] ?? route.name[0].toUpperCase() + route.name.slice(1)} · Pane`
+    document.title = `${t[route.name] ?? route.name[0].toUpperCase() + route.name.slice(1)} · DashApp`
   }, [route.name])
 
   // The light that follows the pointer across glass surfaces.

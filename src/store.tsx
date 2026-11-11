@@ -184,7 +184,7 @@ export function useStore(): Store {
 let uid = Date.now() % 100000
 const tempId = (p: string) => `tmp-${p}${(uid++).toString(36)}`
 
-const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Can’t reach Pane. Check your connection.')
+const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Can’t reach DashApp. Check your connection.')
 
 /** Fields a task PATCH accepts. */
 const TASK_FIELDS = ['title', 'project', 'assignee', 'status', 'priority', 'due', 'estimate'] as const

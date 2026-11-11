@@ -17,7 +17,7 @@ export interface OAuthProfile {
 }
 
 /**
- * Turns a provider identity into a Pane user. Links by email only when both
+ * Turns a provider identity into a DashApp user. Links by email only when both
  * sides have proven the address, so a provider account can't take over a
  * local account someone registered with an address they don't own.
  */
